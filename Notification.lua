@@ -1,4 +1,4 @@
--- Notification.lua v3.0
+-- Notification.lua v3.1 (with better transitions)
 local NotificationModule = {}
 
 local SETTINGS = {
@@ -19,11 +19,11 @@ local SETTINGS = {
     defaultDuration = 3,
     paragraphDuration = 5,
     zIndex = 10,
+    slideOffset = 32, -- How far it slides in/out horizontally
 }
 
 local cachedObjects = {}
 
--- Utility: UIListLayout caching for performance and ordering
 local function ensureLayout(container)
     if not container:FindFirstChild("NotificationLayout") then
         local layout = Instance.new("UIListLayout")
@@ -35,14 +35,12 @@ local function ensureLayout(container)
     end
 end
 
--- Utility: Defensive destroy
 local function safeDestroy(obj)
     if obj and obj.Parent then
         obj:Destroy()
     end
 end
 
--- Utility: Enforce max notification count
 local function enforceLimit(container)
     local notifs = {}
     for _, c in ipairs(container:GetChildren()) do
@@ -58,7 +56,6 @@ local function enforceLimit(container)
     end
 end
 
--- Core notification frame creator, cached for performance
 local function getNotificationFrame()
     if cachedObjects.Frame then
         return cachedObjects.Frame:Clone()
@@ -67,9 +64,10 @@ local function getNotificationFrame()
     local frame = Instance.new("Frame")
     frame.Name = "NotificationFrame"
     frame.Size = UDim2.new(1, 0, 0, SETTINGS.notificationHeight)
-    frame.BackgroundTransparency = 0.2
+    frame.BackgroundTransparency = 1 -- Initially fully transparent for fade-in
     frame.BorderSizePixel = 0
     frame.ZIndex = SETTINGS.zIndex
+    frame.ClipsDescendants = true
 
     local corner = Instance.new("UICorner")
     corner.CornerRadius = SETTINGS.cornerRadius
@@ -100,7 +98,6 @@ local function getNotificationFrame()
     return frame:Clone()
 end
 
--- UI initialization
 function NotificationModule.init(playerGui, opts)
     opts = opts or {}
     SETTINGS.maxNotifications = opts.maxNotifications or SETTINGS.maxNotifications
@@ -129,7 +126,39 @@ function NotificationModule.init(playerGui, opts)
     NotificationModule._container = container
 end
 
--- Internal: Show a notification (single or paragraph)
+local function betterTransition(notif, startX, endX, fadeIn, fadeOut)
+    -- Slide in with fade
+    notif.Position = UDim2.new(0, startX, 0, 0)
+    notif.BackgroundTransparency = 1
+    notif.Visible = true
+    notif:TweenPosition(UDim2.new(0, endX, 0, 0), "Out", "Quad", 0.22, true)
+    -- Fade in
+    for i = 1, 10 do
+        notif.BackgroundTransparency = 1 - (i * 0.08)
+        task.wait(0.015)
+    end
+    notif.BackgroundTransparency = 0.2
+
+    if fadeIn then fadeIn() end
+    -- Will slide/fade out on removal with fadeOut()
+end
+
+local function slideOutAndDestroy(notif, callback)
+    -- Slide to the right and fade out
+    local currentPos = notif.Position
+    local outPos = UDim2.new(0, SETTINGS.slideOffset, 0, currentPos.Y.Offset)
+    notif:TweenPosition(outPos, "In", "Quad", 0.16, true)
+    for i = 1, 10 do
+        notif.BackgroundTransparency = 0.2 + (i * 0.08)
+        task.wait(0.012)
+    end
+    notif.BackgroundTransparency = 1
+    safeDestroy(notif)
+    if typeof(callback) == "function" then
+        pcall(callback)
+    end
+end
+
 local function showNotification(message, duration, notifType, isParagraph, callback)
     assert(NotificationModule._container, "NotificationModule is not initialized! Call init(playerGui) first.")
 
@@ -140,39 +169,46 @@ local function showNotification(message, duration, notifType, isParagraph, callb
     local textLabel = notif:FindFirstChild("NotificationText")
     notif.BackgroundColor3 = SETTINGS.types[nType].Color
     notif.LayoutOrder = -tick()
-    notif.Size = UDim2.new(1, 0, 0, isParagraph and notif.TextBounds and (textLabel.TextBounds.Y + 16) or SETTINGS.notificationHeight)
-    notif.Parent = NotificationModule._container
+    notif.Position = UDim2.new(0, SETTINGS.slideOffset, 0, 0) -- Start off to the right
+    notif.Visible = false
 
-    textLabel.Text = tostring(message)
-    textLabel.TextYAlignment = isParagraph and Enum.TextYAlignment.Top or Enum.TextYAlignment.Center
+    if isParagraph then
+        textLabel.TextYAlignment = Enum.TextYAlignment.Top
+        textLabel.TextWrapped = true
+        textLabel.Text = tostring(message)
+        textLabel.Size = UDim2.new(1, 0, 1, 0)
+        notif.Size = UDim2.new(1, 0, 0, math.max(SETTINGS.notificationHeight, textLabel.TextBounds.Y + 16))
+    else
+        textLabel.TextYAlignment = Enum.TextYAlignment.Center
+        textLabel.TextWrapped = false
+        textLabel.Text = tostring(message)
+        textLabel.Size = UDim2.new(1, 0, 1, 0)
+        notif.Size = UDim2.new(1, 0, 0, SETTINGS.notificationHeight)
+    end
+
+    notif.Parent = NotificationModule._container
     notif:SetAttribute("TimeStamp", tick())
 
     enforceLimit(NotificationModule._container)
 
-    -- Animate In
-    notif.Size = UDim2.new(1, 0, 0, 0)
-    notif:TweenSize(isParagraph and UDim2.new(1, 0, 0, textLabel.TextBounds.Y + 16) or UDim2.new(1, 0, 0, SETTINGS.notificationHeight), "Out", "Quad", 0.23, true)
+    -- Animate In: Slide + Fade
+    task.spawn(function()
+        betterTransition(notif, SETTINGS.slideOffset, 0)
+    end)
 
     -- Auto-destroy after duration
     task.spawn(function()
         task.wait(duration)
         if notif and notif.Parent then
-            notif:TweenSize(UDim2.new(1, 0, 0, 0), "In", "Quad", 0.18, true)
-            task.wait(0.18)
-            safeDestroy(notif)
-            if typeof(callback) == "function" then
-                pcall(callback)
-            end
+            slideOutAndDestroy(notif, callback)
         end
     end)
 end
 
--- Public API: single-line notification
 function NotificationModule.showNotification(message, duration, notifType, callback)
     showNotification(message, duration, notifType, false, callback)
 end
 
--- Public API: paragraph (multi-line) notification
 function NotificationModule.paragraphNotification(message, duration, notifType, callback)
     showNotification(message, duration, notifType, true, callback)
 end
