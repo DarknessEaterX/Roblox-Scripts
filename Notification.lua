@@ -1,12 +1,99 @@
 local NotificationModule = {}
 
--- Create a function to initialize notifications
+local DEFAULTS = {
+    duration = 3,
+    backgroundColors = {
+        info = Color3.fromRGB(30, 30, 30),
+        success = Color3.fromRGB(34, 139, 34),
+        warning = Color3.fromRGB(255, 165, 0),
+        error = Color3.fromRGB(220, 20, 60)
+    },
+    textColor = Color3.new(1, 1, 1),
+    font = Enum.Font.GothamSemibold,
+    textSize = 14,
+    cornerRadius = UDim.new(0, 6),
+    maxNotifications = 5
+}
+
+local guiRefs = {}
+
+-- Internal notification creation function
+local function createNotification(container, message, options)
+    options = options or {}
+    local notifType = options.type or "info"
+    local duration = options.duration or DEFAULTS.duration
+    local icon = options.icon
+
+    -- Limit number of notifications
+    local currentNotifs = #container:GetChildren()
+    if currentNotifs >= (options.maxNotifications or DEFAULTS.maxNotifications) then
+        local oldest = container:GetChildren()[1]
+        if oldest then oldest:Destroy() end
+    end
+
+    local notif = Instance.new("Frame")
+    notif.Name = "Notification"
+    notif.Size = UDim2.new(1, 0, 0, 36)
+    notif.BackgroundColor3 = DEFAULTS.backgroundColors[notifType] or DEFAULTS.backgroundColors.info
+    notif.BackgroundTransparency = 0.25
+    notif.ClipsDescendants = true
+
+    -- Add icon if provided
+    if icon then
+        local iconLabel = Instance.new("ImageLabel")
+        iconLabel.Name = "Icon"
+        iconLabel.Image = icon
+        iconLabel.Size = UDim2.new(0, 20, 0, 20)
+        iconLabel.Position = UDim2.new(0, 8, 0, 8)
+        iconLabel.BackgroundTransparency = 1
+        iconLabel.Parent = notif
+    end
+
+    local text = Instance.new("TextLabel")
+    text.Name = "NotificationText"
+    text.Size = UDim2.new(1, icon and -40 or -20, 1, 0)
+    text.Position = UDim2.new(0, icon and 36 or 10, 0, 0)
+    text.BackgroundTransparency = 1
+    text.TextColor3 = options.textColor or DEFAULTS.textColor
+    text.Font = options.font or DEFAULTS.font
+    text.TextSize = options.textSize or DEFAULTS.textSize
+    text.TextXAlignment = Enum.TextXAlignment.Left
+    text.Text = message
+    text.Parent = notif
+
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = options.cornerRadius or DEFAULTS.cornerRadius
+    corner.Parent = notif
+
+    local padding = Instance.new("UIPadding")
+    padding.PaddingLeft = UDim.new(0, 10)
+    padding.PaddingRight = UDim.new(0, 10)
+    padding.Parent = notif
+
+    notif.Parent = container
+    notif:SetAttribute("TimeStamp", tick())
+
+    -- Tween in
+    notif.Size = UDim2.new(1, 0, 0, 0)
+    notif:TweenSize(UDim2.new(1, 0, 0, 36), "Out", "Quad", 0.25, true)
+
+    -- Remove after duration
+    task.delay(duration, function()
+        if notif and notif.Parent then
+            notif:TweenSize(UDim2.new(1, 0, 0, 0), "In", "Quad", 0.25, true)
+            task.wait(0.25)
+            notif:Destroy()
+            if options.onDismiss then options.onDismiss() end
+        end
+    end)
+end
+
+-- Initialize notification system
 function NotificationModule.init(playerGui)
     -- Remove old GUI if exists
     local oldGui = playerGui:FindFirstChild("NotificationGui")
     if oldGui then oldGui:Destroy() end
 
-    -- Create main GUI
     local notificationGui = Instance.new("ScreenGui")
     notificationGui.Name = "NotificationGui"
     notificationGui.IgnoreGuiInset = true
@@ -14,118 +101,26 @@ function NotificationModule.init(playerGui)
     notificationGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
     notificationGui.Parent = playerGui
 
-    -- Create container for notifications
     local container = Instance.new("Frame")
     container.Name = "NotificationContainer"
-    container.Size = UDim2.new(0, 300, 1, -20)
-    container.Position = UDim2.new(1, -310, 0, 10)
+    container.Size = UDim2.new(0, 320, 1, -20)
+    container.Position = UDim2.new(1, -330, 0, 10)
     container.BackgroundTransparency = 1
     container.BorderSizePixel = 0
     container.ClipsDescendants = true
     container.Parent = notificationGui
 
-    -- Function to reorder notifications
-    local function reorder()
-        local children = {}
-        for _, child in ipairs(container:GetChildren()) do
-            if child:IsA("Frame") or child:IsA("TextLabel") then
-                table.insert(children, child)
-            end
-        end
-        table.sort(children, function(a, b)
-            return a:GetAttribute("TimeStamp") > b:GetAttribute("TimeStamp")
-        end)
-        for i, child in ipairs(children) do
-            child.Position = UDim2.new(0, 0, 0, (i - 1) * 36)
-        end
+    local layout = Instance.new("UIListLayout")
+    layout.Padding = UDim.new(0, 8)
+    layout.SortOrder = Enum.SortOrder.LayoutOrder
+    layout.Parent = container
+
+    guiRefs[playerGui] = container
+
+    -- Expose show function for this GUI
+    function NotificationModule.show(message, options)
+        createNotification(container, message, options)
     end
-
-    -- Function to show single-line notification
-    function NotificationModule.showNotification(message: string, duration: number?)
-        duration = duration or 3
-
-        local notif = Instance.new("TextLabel")
-        notif.Name = "Notification"
-        notif.Size = UDim2.new(1, 0, 0, 30)
-        notif.Position = UDim2.new(0, 0, 0, 0)
-        notif.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-        notif.BackgroundTransparency = 0.5
-        notif.TextColor3 = Color3.new(1, 1, 1)
-        notif.Font = Enum.Font.GothamSemibold
-        notif.TextSize = 14
-        notif.TextXAlignment = Enum.TextXAlignment.Left
-        notif.Text = message
-        notif.ZIndex = 10
-        notif.Parent = container
-        notif:SetAttribute("TimeStamp", tick())
-
-        local padding = Instance.new("UIPadding")
-        padding.PaddingLeft = UDim.new(0, 10)
-        padding.PaddingRight = UDim.new(0, 10)
-        padding.Parent = notif
-
-        local corner = Instance.new("UICorner")
-        corner.CornerRadius = UDim.new(0, 6)
-        corner.Parent = notif
-
-        reorder()
-
-        task.delay(duration, function()
-            if notif and notif.Parent then
-                notif:TweenSize(UDim2.new(1, 0, 0, 0), "Out", "Quad", 0.25, true)
-                task.wait(0.25)
-                notif:Destroy()
-                reorder()
-            end
-        end)
-    end
-
-    -- Function to show multi-line (paragraph) notification
-    function NotificationModule.paragraphNotification(message: string, duration: number?)
-    duration = duration or 5
-
-    local notif = Instance.new("TextLabel")
-    notif.Name = "ParagraphNotification"
-    notif.AnchorPoint = Vector2.new(1, 0)
-    notif.Position = UDim2.new(1, -10, 0, 0)
-    notif.Size = UDim2.new(0, 320, 0, 0) -- Fixed width, auto-height
-    notif.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-    notif.BackgroundTransparency = 0.5
-    notif.TextColor3 = Color3.new(1, 1, 1)
-    notif.Font = Enum.Font.GothamSemibold
-    notif.TextSize = 14
-    notif.TextWrapped = true
-    notif.TextYAlignment = Enum.TextYAlignment.Top
-    notif.TextXAlignment = Enum.TextXAlignment.Left
-    notif.AutomaticSize = Enum.AutomaticSize.Y -- Only Y-axis auto-size
-    notif.ClipsDescendants = true
-    notif.ZIndex = 10
-    notif.Text = message
-    notif.Parent = container
-    notif:SetAttribute("TimeStamp", tick())
-
-    local padding = Instance.new("UIPadding")
-    padding.PaddingTop = UDim.new(0, 6)
-    padding.PaddingBottom = UDim.new(0, 6)
-    padding.PaddingLeft = UDim.new(0, 10)
-    padding.PaddingRight = UDim.new(0, 10)
-    padding.Parent = notif
-
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 6)
-    corner.Parent = notif
-
-    reorder()
-
-    task.delay(duration, function()
-        if notif and notif.Parent then
-            notif:TweenSize(UDim2.new(0, 320, 0, 0), "Out", "Quad", 0.25, true)
-            task.wait(0.25)
-            notif:Destroy()
-            reorder()
-        end
-    end)
-   end
 end
 
 return NotificationModule
