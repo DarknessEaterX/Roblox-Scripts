@@ -1,4 +1,4 @@
--- Notification.lua v4.1 - Fixed PlayerGui access
+
 local NotificationModule = {}
 
 -- Configuration
