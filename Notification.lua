@@ -12,10 +12,10 @@ Notif.__index = Notif
 
 -- Icon & Color config (using FontAwesome icons)
 local Icons = {
-    Success = "",
-    Warning = "",
+    Success = "✓",
+    Warning = "⚠︎",
     Error = "！",
-    Info = ""
+    Info = "ⓘ"
 }
 
 -- Alternative FontAwesome icons (uncomment if you have the font installed)
