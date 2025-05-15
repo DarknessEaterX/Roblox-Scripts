@@ -1,4 +1,3 @@
--- Improved NotificationSystem Module
 local NotificationSystem = {}
 
 local Players = game:GetService("Players")
@@ -8,13 +7,11 @@ local RunService = game:GetService("RunService")
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
--- Create ScreenGui container for notifications (only once)
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "NotificationSystemGui"
 screenGui.ResetOnSpawn = false
 screenGui.Parent = playerGui
 
--- Configurable parameters
 local CONFIG = {
     Width = 320,
     Height = 50,
@@ -27,12 +24,12 @@ local CONFIG = {
     TextStrokeTransparency = 0.75,
     Font = Enum.Font.SourceSansSemibold,
     TextSize = 18,
-    SoundId = nil, -- Optional: put a sound asset ID string here to play on notify
+    SoundId = nil,
 }
 
 local notifications = {}
 
--- Helper: Tween a property and wait for it to complete before continuing
+-- Helper to tween a property and wait for completion
 local function tweenProperty(instance, property, goal, duration, easingStyle, easingDirection)
     local tweenInfo = TweenInfo.new(
         duration or 0.3,
@@ -45,13 +42,20 @@ local function tweenProperty(instance, property, goal, duration, easingStyle, ea
     tween.Completed:Connect(function()
         completed = true
     end)
-    -- Wait until tween finishes
     while not completed do
         RunService.Heartbeat:Wait()
     end
 end
 
--- Helper: Create notification frame + text
+-- Helper to cancel all tweens on a given instance (important to prevent overlap/jitter)
+local function cancelTweens(instance)
+    local tweens = TweenService:GetPlayingTweens(instance)
+    for _, tween in ipairs(tweens) do
+        tween:Cancel()
+    end
+end
+
+-- Create notification frame and text label
 local function createNotification(text)
     local frame = Instance.new("Frame")
     frame.Size = UDim2.new(0, CONFIG.Width, 0, CONFIG.Height)
@@ -81,49 +85,48 @@ local function createNotification(text)
     return frame, textLabel
 end
 
--- Helper: reposition notifications smoothly
+-- Reposition notifications stacked top-right with spacing, cancelling any running tweens
 local function repositionNotifications()
     for i, notif in ipairs(notifications) do
-        notif:TweenPosition(
-            UDim2.new(1, -CONFIG.Padding, 0, CONFIG.Padding + (i - 1) * (CONFIG.Height + CONFIG.Padding)),
-            Enum.EasingDirection.Out,
-            Enum.EasingStyle.Quad,
-            0.3,
-            true
+        cancelTweens(notif)
+        local targetPos = UDim2.new(
+            1, -CONFIG.Padding,
+            0, CONFIG.Padding + (i - 1) * (CONFIG.Height + CONFIG.Padding)
         )
+        notif:TweenPosition(targetPos, Enum.EasingDirection.Out, Enum.EasingStyle.Quad, 0.3, true)
     end
 end
 
--- Main notification function
+-- Main Notify function
 function NotificationSystem:Notify(message)
-    -- Play sound if set
+    -- Optional sound play
     if CONFIG.SoundId then
         local sound = Instance.new("Sound")
         sound.SoundId = CONFIG.SoundId
         sound.Volume = 0.5
         sound.PlayOnRemove = true
         sound.Parent = playerGui
-        sound:Destroy() -- plays and cleans itself
+        sound:Destroy()
     end
 
     local frame, textLabel = createNotification(message)
     table.insert(notifications, frame)
 
+    -- Reposition all notifications immediately to avoid overlap
     repositionNotifications()
 
-    -- Fade in (non-blocking)
+    -- Fade in
     TweenService:Create(frame, TweenInfo.new(CONFIG.FadeTime, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundTransparency = CONFIG.BackgroundTransparency}):Play()
     TweenService:Create(textLabel, TweenInfo.new(CONFIG.FadeTime, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {TextTransparency = 0}):Play()
 
-    -- Schedule fade out and removal after lifetime
+    -- Schedule fade out and removal
     spawn(function()
         wait(CONFIG.Lifetime)
 
-        -- Fade out (block until done)
         tweenProperty(frame, "BackgroundTransparency", 1, CONFIG.FadeTime, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
         tweenProperty(textLabel, "TextTransparency", 1, CONFIG.FadeTime, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
 
-        -- Remove notification from list and destroy
+        -- Remove from notifications list and destroy
         for i, notif in ipairs(notifications) do
             if notif == frame then
                 table.remove(notifications, i)
@@ -132,8 +135,7 @@ function NotificationSystem:Notify(message)
         end
 
         frame:Destroy()
-
-        -- Reposition remaining notifications
+        -- Reposition remaining notifications after removal
         repositionNotifications()
     end)
 end
