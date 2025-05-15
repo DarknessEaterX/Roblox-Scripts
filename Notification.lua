@@ -3,6 +3,7 @@ local Notif = {}
 
 local TweenService = game:GetService("TweenService")
 local CoreGui = game:GetService("CoreGui")
+local Workspace = game:GetService("Workspace")
 
 local Icons = {
 	["Warning"] = "⚠︎",
@@ -25,18 +26,23 @@ function Notif:Send(type, message, duration)
 	screenGui.Name = "DragnirNotif"
 	screenGui.Parent = CoreGui
 
+	local screenSize = Workspace.CurrentCamera.ViewportSize
+	local frameWidth = math.clamp(screenSize.X * 0.4, 240, 400)
+	local frameHeight = 50
+	local padding = 20
+
 	local notifFrame = Instance.new("Frame")
-	notifFrame.Size = UDim2.new(0, 350, 0, 40)
-	notifFrame.Position = UDim2.new(1, -360, 1, -60)
+	notifFrame.Size = UDim2.new(0, frameWidth, 0, frameHeight)
+	notifFrame.Position = UDim2.new(0, screenSize.X, 0, padding)
 	notifFrame.BackgroundColor3 = Colors[type] or Color3.fromRGB(50, 50, 50)
 	notifFrame.BackgroundTransparency = 0
 	notifFrame.BorderSizePixel = 0
 	notifFrame.ClipsDescendants = true
-	notifFrame.AnchorPoint = Vector2.new(1, 1)
+	notifFrame.AnchorPoint = Vector2.new(1, 0)
 	notifFrame.Parent = screenGui
 
 	local uiCorner = Instance.new("UICorner", notifFrame)
-	uiCorner.CornerRadius = UDim.new(0, 6)
+	uiCorner.CornerRadius = UDim.new(0, 8)
 
 	local icon = Instance.new("TextLabel")
 	icon.Size = UDim2.new(0, 40, 1, 0)
@@ -59,14 +65,16 @@ function Notif:Send(type, message, duration)
 	text.BackgroundTransparency = 1
 	text.Parent = notifFrame
 
+	local targetPos = UDim2.new(0, screenSize.X - padding, 0, padding)
+
 	local tweenIn = TweenService:Create(notifFrame, TweenInfo.new(0.4, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
-		Position = UDim2.new(1, -360, 1, -110)
+		Position = targetPos
 	})
 	tweenIn:Play()
 
 	task.delay(duration or 3, function()
 		local tweenOut = TweenService:Create(notifFrame, TweenInfo.new(0.4, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {
-			Position = UDim2.new(1, -360, 1, -60)
+			Position = UDim2.new(0, screenSize.X, 0, padding)
 		})
 		tweenOut:Play()
 		tweenOut.Completed:Wait()
