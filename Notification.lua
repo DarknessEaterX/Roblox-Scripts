@@ -39,7 +39,7 @@ function Notif:Send(type, message, duration)
 	notifFrame.BorderSizePixel = 0
 	notifFrame.ClipsDescendants = true
 	notifFrame.AnchorPoint = Vector2.new(1, 0)
- notifFrame.BackgroundTransparency = 0.9
+ notifFrame.BackgroundTransparency = 0.5
 	notifFrame.Parent = screenGui
 
 	local uiCorner = Instance.new("UICorner", notifFrame)
