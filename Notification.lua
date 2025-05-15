@@ -29,7 +29,9 @@ local CONFIG = {
 
 local notifications = {}
 
--- Helper to tween a property and wait for completion
+-- We'll store tweens per notification frame here:
+local activeTweens = {}
+
 local function tweenProperty(instance, property, goal, duration, easingStyle, easingDirection)
     local tweenInfo = TweenInfo.new(
         duration or 0.3,
@@ -41,28 +43,46 @@ local function tweenProperty(instance, property, goal, duration, easingStyle, ea
     local completed = false
     tween.Completed:Connect(function()
         completed = true
+        -- Remove from activeTweens once complete
+        if activeTweens[instance] then
+            for i, t in ipairs(activeTweens[instance]) do
+                if t == tween then
+                    table.remove(activeTweens[instance], i)
+                    break
+                end
+            end
+            if #activeTweens[instance] == 0 then
+                activeTweens[instance] = nil
+            end
+        end
     end)
+
+    -- Track this tween
+    activeTweens[instance] = activeTweens[instance] or {}
+    table.insert(activeTweens[instance], tween)
+
     while not completed do
         RunService.Heartbeat:Wait()
     end
 end
 
--- Helper to cancel all tweens on a given instance (important to prevent overlap/jitter)
+-- Cancel all active tweens for an instance
 local function cancelTweens(instance)
-    local tweens = TweenService:GetPlayingTweens(instance)
-    for _, tween in ipairs(tweens) do
-        tween:Cancel()
+    if activeTweens[instance] then
+        for _, tween in ipairs(activeTweens[instance]) do
+            tween:Cancel()
+        end
+        activeTweens[instance] = nil
     end
 end
 
--- Create notification frame and text label
 local function createNotification(text)
     local frame = Instance.new("Frame")
     frame.Size = UDim2.new(0, CONFIG.Width, 0, CONFIG.Height)
     frame.BackgroundColor3 = CONFIG.BackgroundColor
-    frame.BackgroundTransparency = 1 -- start transparent
+    frame.BackgroundTransparency = 1
     frame.BorderSizePixel = 0
-    frame.AnchorPoint = Vector2.new(1, 0) -- top-right anchor
+    frame.AnchorPoint = Vector2.new(1, 0)
     frame.Position = UDim2.new(1, -CONFIG.Padding, 0, CONFIG.Padding)
     frame.ClipsDescendants = true
     frame.ZIndex = 10
@@ -77,7 +97,7 @@ local function createNotification(text)
     textLabel.TextWrapped = true
     textLabel.Font = CONFIG.Font
     textLabel.TextSize = CONFIG.TextSize
-    textLabel.TextTransparency = 1 -- start transparent
+    textLabel.TextTransparency = 1
     textLabel.ZIndex = 11
     textLabel.Parent = frame
 
@@ -85,7 +105,6 @@ local function createNotification(text)
     return frame, textLabel
 end
 
--- Reposition notifications stacked top-right with spacing, cancelling any running tweens
 local function repositionNotifications()
     for i, notif in ipairs(notifications) do
         cancelTweens(notif)
@@ -93,13 +112,32 @@ local function repositionNotifications()
             1, -CONFIG.Padding,
             0, CONFIG.Padding + (i - 1) * (CONFIG.Height + CONFIG.Padding)
         )
-        notif:TweenPosition(targetPos, Enum.EasingDirection.Out, Enum.EasingStyle.Quad, 0.3, true)
+        -- Tween position but store tween manually
+        local tweenInfo = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+        local tween = TweenService:Create(notif, tweenInfo, {Position = targetPos})
+        tween:Play()
+
+        activeTweens[notif] = activeTweens[notif] or {}
+        table.insert(activeTweens[notif], tween)
+
+        tween.Completed:Connect(function()
+            -- Remove from active tweens when done
+            if activeTweens[notif] then
+                for i, t in ipairs(activeTweens[notif]) do
+                    if t == tween then
+                        table.remove(activeTweens[notif], i)
+                        break
+                    end
+                end
+                if #activeTweens[notif] == 0 then
+                    activeTweens[notif] = nil
+                end
+            end
+        end)
     end
 end
 
--- Main Notify function
 function NotificationSystem:Notify(message)
-    -- Optional sound play
     if CONFIG.SoundId then
         local sound = Instance.new("Sound")
         sound.SoundId = CONFIG.SoundId
@@ -112,21 +150,17 @@ function NotificationSystem:Notify(message)
     local frame, textLabel = createNotification(message)
     table.insert(notifications, frame)
 
-    -- Reposition all notifications immediately to avoid overlap
     repositionNotifications()
 
-    -- Fade in
     TweenService:Create(frame, TweenInfo.new(CONFIG.FadeTime, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundTransparency = CONFIG.BackgroundTransparency}):Play()
     TweenService:Create(textLabel, TweenInfo.new(CONFIG.FadeTime, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {TextTransparency = 0}):Play()
 
-    -- Schedule fade out and removal
     spawn(function()
         wait(CONFIG.Lifetime)
 
         tweenProperty(frame, "BackgroundTransparency", 1, CONFIG.FadeTime, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
         tweenProperty(textLabel, "TextTransparency", 1, CONFIG.FadeTime, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
 
-        -- Remove from notifications list and destroy
         for i, notif in ipairs(notifications) do
             if notif == frame then
                 table.remove(notifications, i)
@@ -135,7 +169,6 @@ function NotificationSystem:Notify(message)
         end
 
         frame:Destroy()
-        -- Reposition remaining notifications after removal
         repositionNotifications()
     end)
 end
