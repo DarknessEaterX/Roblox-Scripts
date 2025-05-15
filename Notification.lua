@@ -19,31 +19,62 @@ local Colors = {
 	["Success"] = Color3.fromRGB(0, 200, 83)
 }
 
+-- Singleton setup
+local function getOrCreateGui()
+	local gui = CoreGui:FindFirstChild("DragnirNotif")
+	if gui then return gui end
+
+	gui = Instance.new("ScreenGui")
+	gui.Name = "DragnirNotif"
+	gui.IgnoreGuiInset = true
+	gui.ResetOnSpawn = false
+	gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+	gui.Parent = CoreGui
+
+	local container = Instance.new("Frame")
+	container.Name = "Container"
+	container.BackgroundTransparency = 1
+	container.Size = UDim2.new(1, 0, 1, 0)
+	container.Position = UDim2.new(0, 0, 0, 0)
+	container.Parent = gui
+
+	local layout = Instance.new("UIListLayout")
+	layout.Name = "Layout"
+	layout.Parent = container
+	layout.SortOrder = Enum.SortOrder.LayoutOrder
+	layout.HorizontalAlignment = Enum.HorizontalAlignment.Right
+	layout.VerticalAlignment = Enum.VerticalAlignment.Top
+	layout.Padding = UDim.new(0, 8)
+
+	local padding = Instance.new("UIPadding")
+	padding.PaddingTop = UDim.new(0, 20)
+	padding.PaddingRight = UDim.new(0, 20)
+	padding.Parent = container
+
+	return gui
+end
+
 function Notif:Send(type, message, duration)
-	local screenGui = Instance.new("ScreenGui")
-	screenGui.IgnoreGuiInset = true
-	screenGui.ResetOnSpawn = false
-	screenGui.Name = "DragnirNotif"
-	screenGui.Parent = CoreGui
+	local gui = getOrCreateGui()
+	local container = gui:FindFirstChild("Container")
+	if not container then return end
 
 	local screenSize = Workspace.CurrentCamera.ViewportSize
 	local frameWidth = math.clamp(screenSize.X * 0.4, 240, 400)
 	local frameHeight = 50
-	local padding = 20
 
 	local notifFrame = Instance.new("Frame")
 	notifFrame.Size = UDim2.new(0, frameWidth, 0, frameHeight)
-	notifFrame.Position = UDim2.new(0, screenSize.X, 0, padding)
 	notifFrame.BackgroundColor3 = Colors[type] or Color3.fromRGB(50, 50, 50)
 	notifFrame.BackgroundTransparency = 0
 	notifFrame.BorderSizePixel = 0
 	notifFrame.ClipsDescendants = true
+	notifFrame.LayoutOrder = os.clock() * 1000
 	notifFrame.AnchorPoint = Vector2.new(1, 0)
- notifFrame.BackgroundTransparency = 0.5
-	notifFrame.Parent = screenGui
+	notifFrame.Position = UDim2.new(1, 0, 0, 0)
+	notifFrame.Parent = container
 
-	local uiCorner = Instance.new("UICorner", notifFrame)
-	uiCorner.CornerRadius = UDim.new(0, 8)
+	Instance.new("UICorner", notifFrame).CornerRadius = UDim.new(0, 8)
 
 	local icon = Instance.new("TextLabel")
 	icon.Size = UDim2.new(0, 40, 1, 0)
@@ -66,20 +97,22 @@ function Notif:Send(type, message, duration)
 	text.BackgroundTransparency = 1
 	text.Parent = notifFrame
 
-	local targetPos = UDim2.new(0, screenSize.X - padding, 0, padding)
+	-- Tween in from the right edge (offscreen)
+	local initialPos = notifFrame.Position
+	notifFrame.Position = UDim2.new(1, frameWidth + 40, 0, 0)
 
-	local tweenIn = TweenService:Create(notifFrame, TweenInfo.new(0.4, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
-		Position = targetPos
+	local tweenIn = TweenService:Create(notifFrame, TweenInfo.new(0.35, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+		Position = initialPos
 	})
 	tweenIn:Play()
 
 	task.delay(duration or 3, function()
-		local tweenOut = TweenService:Create(notifFrame, TweenInfo.new(0.4, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {
-			Position = UDim2.new(0, screenSize.X, 0, padding)
+		local tweenOut = TweenService:Create(notifFrame, TweenInfo.new(0.35, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {
+			Position = UDim2.new(1, frameWidth + 40, 0, 0)
 		})
 		tweenOut:Play()
 		tweenOut.Completed:Wait()
-		screenGui:Destroy()
+		notifFrame:Destroy()
 	end)
 end
 
