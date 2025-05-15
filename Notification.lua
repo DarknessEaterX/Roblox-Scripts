@@ -84,18 +84,19 @@ function Notif:Send(type, message, duration)
 	notifFrame.LayoutOrder = os.clock() * 1000
 	notifFrame.AnchorPoint = Vector2.new(1, 0)
 	notifFrame.Position = UDim2.new(1, 0, 0, 0)
+ notifFrame.BackgroundTransparency = 0.1
 	notifFrame.Parent = container
 
 	local iconColor = Colors[type] or Color3.fromRGB(255, 255, 255)
 
 	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, 8)
+	corner.CornerRadius = UDim.new(0, 3)
 	corner.Parent = notifFrame
 
 	local stroke = Instance.new("UIStroke")
 	stroke.Color = iconColor
-	stroke.Thickness = 2
-	stroke.Transparency = 0
+	stroke.Thickness = 1
+	stroke.Transparency = 0.5
 	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 	stroke.Parent = notifFrame
 
