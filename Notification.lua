@@ -12,10 +12,10 @@ Notif.__index = Notif
 
 -- Icon & Color config (using FontAwesome icons)
 local Icons = {
-    Success = "✓", -- or "" for FontAwesome check
-    Warning = "⚠", -- or "" for FontAwesome exclamation triangle
-    Error = "",   -- or "" for FontAwesome times circle
-    Info = "ℹ"     -- or "" for FontAwesome info circle
+    Success = "",
+    Warning = "",
+    Error = "",
+    Info = ""
 }
 
 -- Alternative FontAwesome icons (uncomment if you have the font installed)
