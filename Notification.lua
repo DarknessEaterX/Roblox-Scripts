@@ -14,7 +14,7 @@ Notif.__index = Notif
 local Icons = {
     Success = "✓", -- or "" for FontAwesome check
     Warning = "⚠", -- or "" for FontAwesome exclamation triangle
-    Error = "✕",   -- or "" for FontAwesome times circle
+    Error = "×",   -- or "" for FontAwesome times circle
     Info = "ℹ"     -- or "" for FontAwesome info circle
 }
 
