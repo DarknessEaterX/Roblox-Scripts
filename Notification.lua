@@ -14,7 +14,7 @@ Notif.__index = Notif
 local Icons = {
     Success = "",
     Warning = "",
-    Error = "",
+    Error = "！",
     Info = ""
 }
 
