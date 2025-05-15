@@ -1,124 +1,386 @@
--- Notification.lua v3.2 - Complete In-One Script
+-- Notification.lua v4.0 - Enhanced Notification System
 local NotificationModule = {}
 
+-- Configuration with better defaults
 local SETTINGS = {
     types = {
-        info = { Color = Color3.fromRGB(30, 30, 30) },
-        success = { Color = Color3.fromRGB(34, 139, 34) },
-        warning = { Color = Color3.fromRGB(255, 165, 0) },
-        error = { Color = Color3.fromRGB(220, 20, 60) },
+        info = { Color = Color3.fromRGB(47, 49, 54), Icon = "rbxassetid://6031094678" },
+        success = { Color = Color3.fromRGB(87, 242, 135), Icon = "rbxassetid://6031094667" },
+        warning = { Color = Color3.fromRGB(254, 231, 92), Icon = "rbxassetid://6031094661" },
+        error = { Color = Color3.fromRGB(237, 66, 69), Icon = "rbxassetid://6031094634" },
+        custom = { Color = Color3.fromRGB(114, 137, 218), Icon = nil }
     },
-    textColor = Color3.new(1, 1, 1),
-    font = Enum.Font.GothamSemibold,
-    textSize = 14,
-    cornerRadius = UDim.new(0, 6),
-    notificationWidth = 320,
-    notificationHeight = 36,
-    notificationSpacing = 8,
-    maxNotifications = 6,
-    defaultDuration = 3,
-    paragraphDuration = 5,
-    zIndex = 10,
-    slideOffset = 32,
+    textColor = Color3.fromRGB(255, 255, 255),
+    font = Enum.Font.GothamMedium,
+    titleSize = 16,
+    bodySize = 14,
+    cornerRadius = UDim.new(0, 8),
+    notificationWidth = 300,
+    minHeight = 50,
+    maxWidth = 0.3, -- Percentage of screen width
+    spacing = 8,
+    maxNotifications = 5,
+    defaultDuration = 4,
+    longDuration = 6,
+    zIndex = 100,
+    slideOffset = 50,
+    fadeTime = 0.2,
+    slideTime = 0.25,
+    hoverPause = true,
+    closeButton = true,
+    richText = true,
+    responsive = true
 }
 
-local cachedObjects = {}
+-- Object pooling for better performance
+local objectPool = {
+    frames = {},
+    icons = {},
+    titles = {},
+    bodies = {},
+    closeButtons = {}
+}
 
--- Layout helper
-local function ensureLayout(container)
-    if not container:FindFirstChild("NotificationLayout") then
-        local layout = Instance.new("UIListLayout")
-        layout.Name = "NotificationLayout"
-        layout.Padding = UDim.new(0, SETTINGS.notificationSpacing)
-        layout.FillDirection = Enum.FillDirection.Vertical
-        layout.SortOrder = Enum.SortOrder.LayoutOrder
-        layout.Parent = container
+-- Services
+local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
+local Players = game:GetService("Players")
+
+-- Utility functions
+local function safeDestroy(obj)
+    if obj and obj.Parent then
+        pcall(function()
+            obj:Destroy()
+        end)
     end
 end
 
--- Safe destroy
-local function safeDestroy(obj)
-    if obj and obj.Parent then pcall(function() obj:Destroy() end) end
-end
-
--- Limit notifications
-local function enforceLimit(container)
-    local notifs = {}
-    for _, c in ipairs(container:GetChildren()) do
-        if c:IsA("Frame") and c.Name == "NotificationFrame" then
-            table.insert(notifs, c)
+local function getFromPool(pool)
+    for i, obj in ipairs(pool) do
+        if not obj.Parent then
+            table.remove(pool, i)
+            return obj
         end
     end
-    table.sort(notifs, function(a, b)
-        return (a:GetAttribute("TimeStamp") or 0) < (b:GetAttribute("TimeStamp") or 0)
-    end)
-    while #notifs > SETTINGS.maxNotifications do
-        safeDestroy(table.remove(notifs, 1))
+    return nil
+end
+
+local function returnToPool(obj, pool)
+    if obj then
+        obj.Parent = nil
+        table.insert(pool, obj)
     end
 end
 
--- Frame template (supports paragraph mode)
-local function getNotificationFrame(isParagraph)
-    local cacheKey = isParagraph and "ParagraphFrame" or "Frame"
-    if cachedObjects[cacheKey] then
-        return cachedObjects[cacheKey]:Clone()
+-- Dynamic sizing based on screen size
+local function calculateDimensions()
+    if SETTINGS.responsive then
+        local viewportSize = workspace.CurrentCamera.ViewportSize
+        local maxWidth = math.floor(viewportSize.X * SETTINGS.maxWidth)
+        return math.min(SETTINGS.notificationWidth, maxWidth)
     end
+    return SETTINGS.notificationWidth
+end
 
+-- Notification frame template
+local function createNotificationFrame()
     local frame = Instance.new("Frame")
     frame.Name = "NotificationFrame"
-    frame.Size = UDim2.new(1, 0, 0, SETTINGS.notificationHeight)
-    frame.BackgroundTransparency = 1 -- Start fully transparent for fade
+    frame.BackgroundTransparency = 1
+    frame.Size = UDim2.new(0, calculateDimensions(), 0, SETTINGS.minHeight)
+    frame.AutomaticSize = Enum.AutomaticSize.Y
     frame.BorderSizePixel = 0
     frame.ZIndex = SETTINGS.zIndex
     frame.ClipsDescendants = true
-    if isParagraph then
-        frame.AutomaticSize = Enum.AutomaticSize.Y
-    end
 
     local corner = Instance.new("UICorner")
     corner.CornerRadius = SETTINGS.cornerRadius
     corner.Parent = frame
 
+    local stroke = Instance.new("UIStroke")
+    stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    stroke.Color = Color3.fromRGB(0, 0, 0)
+    stroke.Transparency = 0.7
+    stroke.Thickness = 1
+    stroke.Parent = frame
+
+    local layout = Instance.new("UIListLayout")
+    layout.Padding = UDim.new(0, 8)
+    layout.FillDirection = Enum.FillDirection.Vertical
+    layout.SortOrder = Enum.SortOrder.LayoutOrder
+    layout.Parent = frame
+
     local padding = Instance.new("UIPadding")
     padding.PaddingLeft = UDim.new(0, 12)
     padding.PaddingRight = UDim.new(0, 12)
-    padding.PaddingTop = UDim.new(0, 6)
-    padding.PaddingBottom = UDim.new(0, 6)
+    padding.PaddingTop = UDim.new(0, 12)
+    padding.PaddingBottom = UDim.new(0, 12)
     padding.Parent = frame
 
-    local label = Instance.new("TextLabel")
-    label.Name = "NotificationText"
-    label.BackgroundTransparency = 1
-    label.TextColor3 = SETTINGS.textColor
-    label.Font = SETTINGS.font
-    label.TextSize = SETTINGS.textSize
-    label.TextXAlignment = Enum.TextXAlignment.Left
-    label.ClipsDescendants = true
-    label.ZIndex = SETTINGS.zIndex + 1
-    if isParagraph then
-        label.AutomaticSize = Enum.AutomaticSize.Y
-        label.Size = UDim2.new(1, 0, 0, 0)
-        label.TextWrapped = true
-        label.TextYAlignment = Enum.TextYAlignment.Top
-    else
-        label.Size = UDim2.new(1, 0, 1, 0)
-        label.TextWrapped = false
-        label.TextYAlignment = Enum.TextYAlignment.Center
-    end
-    label.Parent = frame
-
-    cachedObjects[cacheKey] = frame
-    return frame:Clone()
+    return frame
 end
 
--- UI initialization
-function NotificationModule.init(playerGui, opts)
-    opts = opts or {}
-    SETTINGS.maxNotifications = opts.maxNotifications or SETTINGS.maxNotifications
+-- Notification content template
+local function createContentFrame()
+    local content = Instance.new("Frame")
+    content.Name = "ContentFrame"
+    content.BackgroundTransparency = 1
+    content.Size = UDim2.new(1, 0, 0, 0)
+    content.AutomaticSize = Enum.AutomaticSize.Y
+    content.LayoutOrder = 1
 
+    local layout = Instance.new("UIListLayout")
+    layout.Padding = UDim.new(0, 8)
+    layout.FillDirection = Enum.FillDirection.Horizontal
+    layout.SortOrder = Enum.SortOrder.LayoutOrder
+    layout.Parent = content
+
+    local padding = Instance.new("UIPadding")
+    padding.PaddingRight = UDim.new(0, 8)
+    padding.Parent = content
+
+    return content
+end
+
+-- Notification icon template
+local function createIcon()
+    local icon = Instance.new("ImageLabel")
+    icon.Name = "Icon"
+    icon.BackgroundTransparency = 1
+    icon.Size = UDim2.new(0, 24, 0, 24)
+    icon.LayoutOrder = 1
+    return icon
+end
+
+-- Notification text container
+local function createTextContainer()
+    local container = Instance.new("Frame")
+    container.Name = "TextContainer"
+    container.BackgroundTransparency = 1
+    container.Size = UDim2.new(1, -32, 0, 0)
+    container.AutomaticSize = Enum.AutomaticSize.Y
+    container.LayoutOrder = 2
+
+    local layout = Instance.new("UIListLayout")
+    layout.Padding = UDim.new(0, 4)
+    layout.FillDirection = Enum.FillDirection.Vertical
+    layout.SortOrder = Enum.SortOrder.LayoutOrder
+    layout.Parent = container
+
+    return container
+end
+
+-- Notification title template
+local function createTitle()
+    local title = Instance.new("TextLabel")
+    title.Name = "Title"
+    title.Font = SETTINGS.font
+    title.TextSize = SETTINGS.titleSize
+    title.TextColor3 = SETTINGS.textColor
+    title.BackgroundTransparency = 1
+    title.Size = UDim2.new(1, 0, 0, SETTINGS.titleSize)
+    title.TextXAlignment = Enum.TextXAlignment.Left
+    title.TextYAlignment = Enum.TextYAlignment.Top
+    title.AutomaticSize = Enum.AutomaticSize.Y
+    title.TextWrapped = true
+    title.RichText = SETTINGS.richText
+    title.LayoutOrder = 1
+    return title
+end
+
+-- Notification body template
+local function createBody()
+    local body = Instance.new("TextLabel")
+    body.Name = "Body"
+    body.Font = SETTINGS.font
+    body.TextSize = SETTINGS.bodySize
+    body.TextColor3 = SETTINGS.textColor
+    body.BackgroundTransparency = 1
+    body.Size = UDim2.new(1, 0, 0, SETTINGS.bodySize)
+    body.TextXAlignment = Enum.TextXAlignment.Left
+    body.TextYAlignment = Enum.TextYAlignment.Top
+    body.AutomaticSize = Enum.AutomaticSize.Y
+    body.TextWrapped = true
+    body.RichText = SETTINGS.richText
+    body.TextTransparency = 0.3
+    body.LayoutOrder = 2
+    return body
+end
+
+-- Close button template
+local function createCloseButton()
+    local button = Instance.new("ImageButton")
+    button.Name = "CloseButton"
+    button.Image = "rbxassetid://6031094677"
+    button.BackgroundTransparency = 1
+    button.Size = UDim2.new(0, 16, 0, 16)
+    button.Position = UDim2.new(1, -16, 0, 8)
+    button.ZIndex = SETTINGS.zIndex + 1
+    return button
+end
+
+-- Animation functions
+local function animateIn(notification)
+    notification.Position = UDim2.new(1, SETTINGS.slideOffset, 0, 0)
+    notification.BackgroundTransparency = 1
+    notification.Visible = true
+
+    local fadeIn = TweenService:Create(notification, TweenInfo.new(SETTINGS.fadeTime), {
+        BackgroundTransparency = 0.2
+    })
+    
+    local slideIn = TweenService:Create(notification, TweenInfo.new(SETTINGS.slideTime, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+        Position = UDim2.new(1, 0, 0, 0)
+    })
+
+    fadeIn:Play()
+    slideIn:Play()
+end
+
+local function animateOut(notification, callback)
+    local fadeOut = TweenService:Create(notification, TweenInfo.new(SETTINGS.fadeTime), {
+        BackgroundTransparency = 1,
+        Position = UDim2.new(1, SETTINGS.slideOffset, 0, notification.Position.Y.Offset)
+    })
+
+    fadeOut.Completed:Connect(function()
+        safeDestroy(notification)
+        if callback then pcall(callback) end
+    end)
+    
+    fadeOut:Play()
+end
+
+-- Notification management
+local function enforceNotificationLimit(container)
+    local notifications = {}
+    for _, child in ipairs(container:GetChildren()) do
+        if child:IsA("Frame") and child.Name == "NotificationFrame" then
+            table.insert(notifications, child)
+        end
+    end
+
+    table.sort(notifications, function(a, b)
+        return (a:GetAttribute("CreationTime") or 0) < (b:GetAttribute("CreationTime") or 0)
+    end)
+
+    while #notifications > SETTINGS.maxNotifications do
+        animateOut(table.remove(notifications, 1))
+    end
+end
+
+-- Core notification function
+local function showNotification(options)
+    assert(NotificationModule._container, "NotificationModule not initialized. Call init() first.")
+    
+    -- Merge options with defaults
+    local config = {
+        title = options.title or "Notification",
+        body = options.body or "",
+        duration = options.duration or (options.body and #options.body > 100 and SETTINGS.longDuration or SETTINGS.defaultDuration),
+        notificationType = options.notificationType or "info",
+        callback = options.callback,
+        icon = options.icon,
+        color = options.color
+    }
+
+    -- Get or create notification elements from pool
+    local notification = getFromPool(objectPool.frames) or createNotificationFrame()
+    local content = getFromPool(objectPool.contentFrames) or createContentFrame()
+    local icon = getFromPool(objectPool.icons) or createIcon()
+    local textContainer = getFromPool(objectPool.textContainers) or createTextContainer()
+    local title = getFromPool(objectPool.titles) or createTitle()
+    local body = getFromPool(objectPool.bodies) or createBody()
+    local closeButton = SETTINGS.closeButton and (getFromPool(objectPool.closeButtons) or createCloseButton())
+
+    -- Configure notification type
+    local notificationStyle = SETTINGS.types[config.notificationType] or SETTINGS.types.info
+    notification.BackgroundColor3 = config.color or notificationStyle.Color
+    
+    -- Configure icon
+    icon.Image = config.icon or notificationStyle.Icon
+    if not icon.Image then
+        icon.Visible = false
+    else
+        icon.Visible = true
+    end
+
+    -- Configure text
+    title.Text = config.title
+    body.Text = config.body
+    body.Visible = #config.body > 0
+
+    -- Assemble notification
+    textContainer.Parent = content
+    title.Parent = textContainer
+    body.Parent = textContainer
+    
+    icon.Parent = content
+    content.Parent = notification
+    
+    if closeButton then
+        closeButton.Parent = notification
+        closeButton.MouseButton1Click:Connect(function()
+            animateOut(notification, config.callback)
+        end)
+    end
+
+    notification.Parent = NotificationModule._container
+    notification:SetAttribute("CreationTime", tick())
+
+    -- Handle hover pause
+    if SETTINGS.hoverPause then
+        local hoverTime = 0
+        local originalDuration = config.duration
+        
+        notification.MouseEnter:Connect(function()
+            hoverTime = tick()
+        end)
+        
+        notification.MouseLeave:Connect(function()
+            if hoverTime > 0 then
+                config.duration = originalDuration - (tick() - hoverTime)
+                hoverTime = 0
+            end
+        end)
+    end
+
+    -- Animate in
+    animateIn(notification)
+    enforceNotificationLimit(NotificationModule._container)
+
+    -- Auto-dismiss after duration
+    task.delay(config.duration, function()
+        if notification and notification.Parent then
+            animateOut(notification, config.callback)
+        end
+    end)
+end
+
+-- Public API
+function NotificationModule.init(playerGui, customSettings)
+    -- Apply custom settings
+    if customSettings then
+        for key, value in pairs(customSettings) do
+            if SETTINGS[key] ~= nil then
+                SETTINGS[key] = value
+            elseif key == "types" then
+                for typeName, typeSettings in pairs(value) do
+                    if SETTINGS.types[typeName] then
+                        for setting, val in pairs(typeSettings) do
+                            SETTINGS.types[typeName][setting] = val
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    -- Clean up existing GUI
     local oldGui = playerGui:FindFirstChild("NotificationGui")
     if oldGui then oldGui:Destroy() end
 
+    -- Create new GUI
     local notificationGui = Instance.new("ScreenGui")
     notificationGui.Name = "NotificationGui"
     notificationGui.IgnoreGuiInset = true
@@ -128,89 +390,86 @@ function NotificationModule.init(playerGui, opts)
 
     local container = Instance.new("Frame")
     container.Name = "NotificationContainer"
-    container.Size = UDim2.new(0, SETTINGS.notificationWidth, 1, -20)
-    container.Position = UDim2.new(1, -SETTINGS.notificationWidth - 10, 0, 10)
+    container.Size = UDim2.new(0, calculateDimensions(), 1, -20)
+    container.Position = UDim2.new(1, -10, 0, 10)
+    container.AnchorPoint = Vector2.new(1, 0)
     container.BackgroundTransparency = 1
     container.BorderSizePixel = 0
     container.ClipsDescendants = true
     container.AutomaticSize = Enum.AutomaticSize.Y
     container.Parent = notificationGui
 
-    ensureLayout(container)
+    local layout = Instance.new("UIListLayout")
+    layout.Padding = UDim.new(0, SETTINGS.spacing)
+    layout.FillDirection = Enum.FillDirection.Vertical
+    layout.SortOrder = Enum.SortOrder.LayoutOrder
+    layout.Parent = container
+
     NotificationModule._container = container
 end
 
--- Slide and fade in
-local function betterTransition(notif, startX, endX)
-    notif.Position = UDim2.new(0, startX, 0, 0)
-    notif.BackgroundTransparency = 1
-    notif.Visible = true
-    notif:TweenPosition(UDim2.new(0, endX, 0, 0), "Out", "Quad", 0.22, true)
-    for i = 1, 10 do
-        notif.BackgroundTransparency = 1 - (i * 0.08)
-        task.wait(0.013)
+function NotificationModule.notify(options)
+    if typeof(options) == "string" then
+        options = { title = options }
     end
-    notif.BackgroundTransparency = 0.2
+    showNotification(options)
 end
 
-local function slideOutAndDestroy(notif, callback)
-    local currentPos = notif.Position
-    local outPos = UDim2.new(0, SETTINGS.slideOffset, 0, currentPos.Y.Offset)
-    notif:TweenPosition(outPos, "In", "Quad", 0.16, true)
-    for i = 1, 10 do
-        notif.BackgroundTransparency = 0.2 + (i * 0.08)
-        task.wait(0.012)
-    end
-    notif.BackgroundTransparency = 1
-    safeDestroy(notif)
-    if typeof(callback) == "function" then
-        pcall(callback)
-    end
+-- Convenience methods
+function NotificationModule.info(title, body, duration, callback)
+    showNotification({
+        title = title,
+        body = body,
+        duration = duration,
+        notificationType = "info",
+        callback = callback
+    })
 end
 
--- Core notification (single or paragraph)
-local function showNotification(message, duration, notifType, isParagraph, callback)
-    assert(NotificationModule._container, "NotificationModule is not initialized! Call init(playerGui) first.")
+function NotificationModule.success(title, body, duration, callback)
+    showNotification({
+        title = title,
+        body = body,
+        duration = duration,
+        notificationType = "success",
+        callback = callback
+    })
+end
 
-    local nType = SETTINGS.types[notifType] and notifType or "info"
-    duration = duration or (isParagraph and SETTINGS.paragraphDuration or SETTINGS.defaultDuration)
+function NotificationModule.warning(title, body, duration, callback)
+    showNotification({
+        title = title,
+        body = body,
+        duration = duration,
+        notificationType = "warning",
+        callback = callback
+    })
+end
 
-    local notif = getNotificationFrame(isParagraph)
-    notif.BackgroundColor3 = SETTINGS.types[nType].Color
-    notif.LayoutOrder = -tick()
-    notif.Position = UDim2.new(0, SETTINGS.slideOffset, 0, 0)
-    notif.Visible = false
+function NotificationModule.error(title, body, duration, callback)
+    showNotification({
+        title = title,
+        body = body,
+        duration = duration,
+        notificationType = "error",
+        callback = callback
+    })
+end
 
-    local textLabel = notif:FindFirstChild("NotificationText")
-    textLabel.Text = tostring(message)
-
-    notif.Parent = NotificationModule._container
-    notif:SetAttribute("TimeStamp", tick())
-
-    enforceLimit(NotificationModule._container)
-
-    -- Animate In: Slide + Fade
-    task.spawn(function()
-        betterTransition(notif, SETTINGS.slideOffset, 0)
-    end)
-
-    -- Auto-destroy after duration
-    task.spawn(function()
-        task.wait(duration)
-        if notif and notif.Parent then
-            slideOutAndDestroy(notif, callback)
+-- Auto-initialize for local player
+if RunService:IsClient() then
+    local player = Players.LocalPlayer
+    if player then
+        player:GetPropertyChangedSignal("PlayerGui"):Connect(function()
+            if player.PlayerGui then
+                NotificationModule.init(player.PlayerGui)
+            end
+        end)
+        
+        if player.PlayerGui then
+            NotificationModule.init(player.PlayerGui)
         end
-    end)
-end
-
--- Single-line notification
-function NotificationModule.showNotification(message, duration, notifType, callback)
-    showNotification(message, duration, notifType, false, callback)
-end
-
--- Paragraph (multi-line, auto-resizing!) notification
-function NotificationModule.paragraphNotification(message, duration, notifType, callback)
-    showNotification(message, duration, notifType, true, callback)
+    end
 end
 
 return NotificationModule
