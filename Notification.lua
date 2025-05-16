@@ -154,7 +154,7 @@ function Notif:Send(type, message, duration, onClose)
     text.BackgroundTransparency = 1
     text.ZIndex = 2
     text.Parent = notifFrame
-    text.TextScaled = true
+    text.TextScaled = false
     text.RichText = true
 
     -- Tween in
