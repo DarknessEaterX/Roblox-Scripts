@@ -4,6 +4,9 @@ local Players = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 
+if game:GetService("Players").LocalPlayer.PlayerGui["RayfieldNotifications"] then   game:GetService("Players").LocalPlayer.PlayerGui["RayfieldNotifications"]:Destroy()
+end
+
 local NotificationLibrary = {}
 
 -- Create ScreenGui once
