@@ -154,8 +154,8 @@ function Notif:Send(type, message, duration, onClose)
     text.BackgroundTransparency = 1
     text.ZIndex = 2
     text.Parent = notifFrame
-    text.TextScaled = false
-    text.RichText = true
+    text.TextScaled = true
+    text.RichText = false
 
     -- Tween in
     notifFrame.Position = UDim2.new(1, frameWidth + 40, 0, notifFrame.Position.Y.Offset)
