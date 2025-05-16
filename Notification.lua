@@ -1,218 +1,133 @@
-local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
-local Workspace = game:GetService("Workspace")
+local Lighting = game:GetService("Lighting")
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 
-local player = Players.LocalPlayer
-local Camera = Workspace.CurrentCamera
+local NotificationLibrary = {}
 
-local Notif = {}
-Notif.__index = Notif
+-- Create ScreenGui once
+local Gui = Instance.new("ScreenGui")
+Gui.Name = "RayfieldNotifications"
+Gui.ResetOnSpawn = false
+Gui.IgnoreGuiInset = true
+Gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+Gui.Parent = PlayerGui
 
-local MAX_NOTIFICATIONS = 5
+-- Container for notifications
+local Container = Instance.new("Frame")
+Container.Name = "Container"
+Container.Size = UDim2.new(0.3, 0, 1, 0)
+Container.Position = UDim2.new(0.7, 0, 0, 0)
+Container.BackgroundTransparency = 1
+Container.ClipsDescendants = false
+Container.Parent = Gui
 
-local Icons = {
-    Success = "✓",
-    Warning = "⚠",
-    Error   = "✕",
-    Info    = "ℹ"
-}
+local UIListLayout = Instance.new("UIListLayout")
+UIListLayout.Padding = UDim.new(0, 10)
+UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+UIListLayout.VerticalAlignment = Enum.VerticalAlignment.Bottom
+UIListLayout.Parent = Container
 
-local Colors = {
-    Success = Color3.fromRGB(59, 201, 87),
-    Warning = Color3.fromRGB(255, 200, 0),
-    Error   = Color3.fromRGB(255, 60, 60),
-    Info    = Color3.fromRGB(100, 200, 255)
-}
+function NotificationLibrary:Notify(opts)
+	-- opts is a table: {Title = "", Content = "", Duration = number (optional)}
 
-local function safeWaitForChild(parent, childName, timeout)
-    local ok, obj = pcall(function()
-        return parent:WaitForChild(childName, timeout or 2)
-    end)
-    return ok and obj or nil
+	local title = opts.Title or "Notification"
+	local content = opts.Content or ""
+	local duration = opts.Duration or 4.5
+
+	local Notification = Instance.new("Frame")
+	Notification.Name = "Notification"
+	Notification.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+	Notification.BackgroundTransparency = 0
+	Notification.Size = UDim2.new(1, -10, 0, 75)
+	Notification.Position = UDim2.new(1.2, 0, 1, 0)
+	Notification.AnchorPoint = Vector2.new(1, 1)
+	Notification.BorderSizePixel = 0
+	Notification.ClipsDescendants = true
+	Notification.AutomaticSize = Enum.AutomaticSize.Y
+	Notification.Parent = Container
+
+	local UICorner = Instance.new("UICorner", Notification)
+	UICorner.CornerRadius = UDim.new(0, 8)
+
+	local Stroke = Instance.new("UIStroke", Notification)
+	Stroke.Thickness = 1
+	Stroke.Transparency = 0.8
+	Stroke.Color = Color3.fromRGB(100, 100, 100)
+
+	local TitleLabel = Instance.new("TextLabel")
+	TitleLabel.Name = "Title"
+	TitleLabel.Parent = Notification
+	TitleLabel.BackgroundTransparency = 1
+	TitleLabel.Size = UDim2.new(1, -20, 0, 20)
+	TitleLabel.Position = UDim2.new(0, 10, 0, 10)
+	TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+	TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+	TitleLabel.Font = Enum.Font.GothamMedium
+	TitleLabel.TextSize = 16
+	TitleLabel.Text = title
+
+	local BodyLabel = Instance.new("TextLabel")
+	BodyLabel.Name = "Body"
+	BodyLabel.Parent = Notification
+	BodyLabel.BackgroundTransparency = 1
+	BodyLabel.Size = UDim2.new(1, -20, 0, 40)
+	BodyLabel.Position = UDim2.new(0, 10, 0, 30)
+	BodyLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+	BodyLabel.TextWrapped = true
+	BodyLabel.TextYAlignment = Enum.TextYAlignment.Top
+	BodyLabel.TextXAlignment = Enum.TextXAlignment.Left
+	BodyLabel.Font = Enum.Font.Gotham
+	BodyLabel.TextSize = 14
+	BodyLabel.Text = content
+
+	-- Blur Effect
+	local blur
+	if not getgenv().SecureMode then
+		blur = Instance.new("BlurEffect")
+		blur.Size = 12
+		blur.Name = "RayfieldBlur"
+		blur.Parent = Lighting
+	end
+
+	-- Animate In
+	Notification.BackgroundTransparency = 1
+	Stroke.Transparency = 1
+	TitleLabel.TextTransparency = 1
+	BodyLabel.TextTransparency = 1
+
+	local tweenInPos = TweenService:Create(Notification, TweenInfo.new(0.3), {Position = UDim2.new(1, 0, 1, 0)})
+	local tweenInBG = TweenService:Create(Notification, TweenInfo.new(0.3), {BackgroundTransparency = 0})
+	local tweenInStroke = TweenService:Create(Stroke, TweenInfo.new(0.3), {Transparency = 0.5})
+	local tweenInTitle = TweenService:Create(TitleLabel, TweenInfo.new(0.3), {TextTransparency = 0})
+	local tweenInBody = TweenService:Create(BodyLabel, TweenInfo.new(0.3), {TextTransparency = 0.1})
+
+	tweenInPos:Play()
+	tweenInBG:Play()
+	tweenInStroke:Play()
+	tweenInTitle:Play()
+	tweenInBody:Play()
+
+	-- Animate Out after duration
+	task.delay(duration, function()
+		local tweenOutBG = TweenService:Create(Notification, TweenInfo.new(0.3), {BackgroundTransparency = 1})
+		local tweenOutStroke = TweenService:Create(Stroke, TweenInfo.new(0.3), {Transparency = 1})
+		local tweenOutTitle = TweenService:Create(TitleLabel, TweenInfo.new(0.3), {TextTransparency = 1})
+		local tweenOutBody = TweenService:Create(BodyLabel, TweenInfo.new(0.3), {TextTransparency = 1})
+		local tweenOutPos = TweenService:Create(Notification, TweenInfo.new(0.3), {Position = UDim2.new(1.2, 0, 1, 0)})
+
+		tweenOutBG:Play()
+		tweenOutStroke:Play()
+		tweenOutTitle:Play()
+		tweenOutBody:Play()
+		tweenOutPos:Play()
+
+		tweenOutPos.Completed:Wait()
+
+		if blur then blur:Destroy() end
+		Notification:Destroy()
+	end)
 end
 
-local function getOrCreateGui()
-    local pg = safeWaitForChild(player, "PlayerGui")
-    if not pg then return nil end
-
-    local gui = pg:FindFirstChild("DragnirNotif")
-    if not gui then
-        gui = Instance.new("ScreenGui")
-        gui.Name = "DragnirNotif"
-        gui.IgnoreGuiInset = true
-        gui.ResetOnSpawn = false
-        gui.ZIndexBehavior = Enum.ZIndexBehavior.Global
-        gui.Parent = pg
-
-        local container = Instance.new("Frame")
-        container.Name = "Container"
-        container.BackgroundTransparency = 1
-        container.Size = UDim2.new(1, 0, 1, 0)
-        container.Position = UDim2.new(1, -20, 0, 20)
-        container.AnchorPoint = Vector2.new(1, 0)
-        container.ClipsDescendants = false
-        container.Parent = gui
-
-        local layout = Instance.new("UIListLayout")
-        layout.SortOrder = Enum.SortOrder.LayoutOrder
-        layout.Padding = UDim.new(0, 7)
-        layout.VerticalAlignment = Enum.VerticalAlignment.Top
-        layout.HorizontalAlignment = Enum.HorizontalAlignment.Right
-        layout.Parent = container
-
-        local padding = Instance.new("UIPadding")
-        padding.PaddingTop = UDim.new(0, 10)
-        padding.PaddingRight = UDim.new(0, 10)
-        padding.Parent = container
-    end
-    return gui
-end
-
-local activeNotifications = {}
-
-local function capNotifications(container)
-    while #activeNotifications > MAX_NOTIFICATIONS do
-        local entry = table.remove(activeNotifications, 1)
-        if entry and entry.closeFunc then
-            entry.closeFunc("stacked")
-        end
-    end
-end
-
-function Notif:Send(type, message, duration, onClose)
-    type = Icons[type] and type or "Info"
-    duration = tonumber(duration) or 4
-
-    local gui = getOrCreateGui()
-    if not gui then return end
-    local container = gui:FindFirstChild("Container")
-    if not container then return end
-
-    local screenSize = Camera.ViewportSize
-    local frameWidth = math.clamp(screenSize.X * 0.4, 240, 420)
-
-    local notifFrame = Instance.new("Frame")
-    notifFrame.Size = UDim2.new(0, frameWidth, 0, 80)
-    notifFrame.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
-    notifFrame.BackgroundTransparency = 1
-    notifFrame.BorderSizePixel = 0
-    notifFrame.ClipsDescendants = true
-    notifFrame.LayoutOrder = os.clock() * 1000
-    notifFrame.AnchorPoint = Vector2.new(1, 0)
-    notifFrame.Position = UDim2.new(1, frameWidth + 40, 0, 0)
-    notifFrame.Parent = container
-
-    local shadow = Instance.new("ImageLabel")
-    shadow.Size = UDim2.new(1, 8, 1, 8)
-    shadow.Position = UDim2.new(0, -4, 0, -4)
-    shadow.BackgroundTransparency = 1
-    shadow.Image = "rbxassetid://1316045217"
-    shadow.ImageTransparency = 0.7
-    shadow.ZIndex = 0
-    shadow.Parent = notifFrame
-
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 5)
-    corner.Parent = notifFrame
-
-    local stroke = Instance.new("UIStroke")
-    stroke.Color = Colors[type]
-    stroke.Thickness = 1.5
-    stroke.Transparency = 0.25
-    stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-    stroke.Parent = notifFrame
-
-    local iconLabel = Instance.new("TextLabel")
-    iconLabel.Size = UDim2.new(0, 30, 0, 30)
-    iconLabel.Position = UDim2.new(0, 8, 0, 8)
-    iconLabel.Text = Icons[type]
-    iconLabel.Font = Enum.Font.GothamBold
-    iconLabel.TextSize = 24
-    iconLabel.TextColor3 = Colors[type]
-    iconLabel.BackgroundTransparency = 1
-    iconLabel.ZIndex = 2
-    iconLabel.Parent = notifFrame
-
-    local closeButton = Instance.new("TextButton")
-    closeButton.Size = UDim2.new(0, 22, 0, 22)
-    closeButton.Position = UDim2.new(1, -30, 0, 8)
-    closeButton.Text = "×"
-    closeButton.Font = Enum.Font.GothamBold
-    closeButton.TextSize = 18
-    closeButton.TextColor3 = Color3.fromRGB(240, 240, 240)
-    closeButton.BackgroundTransparency = 0.35
-    closeButton.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
-    closeButton.AutoButtonColor = true
-    closeButton.ZIndex = 2
-    closeButton.Parent = notifFrame
-
-    closeButton.MouseEnter:Connect(function()
-        closeButton.BackgroundColor3 = Color3.fromRGB(120, 80, 80)
-    end)
-    closeButton.MouseLeave:Connect(function()
-        closeButton.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
-    end)
-
-    local text = Instance.new("TextLabel")
-    text.Size = UDim2.new(1, -75, 1, -26)
-    text.Position = UDim2.new(0, 45, 0, 8)
-    text.Text = message or "Notification"
-    text.Font = Enum.Font.Gotham
-    text.TextSize = 16
-    text.TextColor3 = Color3.new(1, 1, 1)
-    text.TextXAlignment = Enum.TextXAlignment.Left
-    text.TextYAlignment = Enum.TextYAlignment.Top
-    text.TextWrapped = true
-    text.BackgroundTransparency = 1
-    text.ZIndex = 2
-    text.AutomaticSize = Enum.AutomaticSize.Y
-    text.Parent = notifFrame
-
-    notifFrame.AutomaticSize = Enum.AutomaticSize.Y
-
-    TweenService:Create(notifFrame, TweenInfo.new(0.38, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
-        Position = UDim2.new(1, 0, 0, 0),
-        BackgroundTransparency = 0.07
-    }):Play()
-
-    local closed = false
-    local function doClose(reason)
-        if closed then return end
-        closed = true
-        TweenService:Create(notifFrame, TweenInfo.new(0.33, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
-            Position = UDim2.new(1, frameWidth + 40, 0, notifFrame.Position.Y.Offset),
-            BackgroundTransparency = 1
-        }):Play()
-        task.delay(0.35, function()
-            if notifFrame.Parent then notifFrame:Destroy() end
-        end)
-        if typeof(onClose) == "function" then
-            pcall(onClose, reason or "closed")
-        end
-    end
-
-    closeButton.MouseButton1Click:Connect(function()
-        doClose("user")
-    end)
-
-    if duration > 0 then
-        task.delay(duration, function()
-            doClose("timeout")
-        end)
-    end
-
-    -- Track with closure
-    table.insert(activeNotifications, {
-        frame = notifFrame,
-        closeFunc = doClose
-    })
-    capNotifications(container)
-
-    return notifFrame
-end
-
-function Notif.new()
-    return setmetatable({}, Notif)
-end
-
-return Notif
+return NotificationLibrary
