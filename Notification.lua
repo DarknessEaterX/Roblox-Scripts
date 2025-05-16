@@ -18,25 +18,24 @@ local Colors = {
 
 -- Get or create the GUI container once
 local function getOrCreateGui()
-    local gui = player:FindFirstChild("PlayerGui"):FindFirstChild("DragnirNotif")
+    local playerGui = player:WaitForChild("PlayerGui")
+    local gui = playerGui:FindFirstChild("DragnirNotif")
     if not gui then
         gui = Instance.new("ScreenGui")
         gui.Name = "DragnirNotif"
         gui.IgnoreGuiInset = true
         gui.ResetOnSpawn = false
         gui.ZIndexBehavior = Enum.ZIndexBehavior.Global
-        gui.Parent = player:WaitForChild("PlayerGui")
+        gui.Parent = playerGui
 
         local container = Instance.new("Frame")
         container.Name = "Container"
         container.BackgroundTransparency = 1
         container.Size = UDim2.new(1, 0, 1, 0)
-        container.Position = UDim2.new(0, 0, 0, 0)
+        container.Position = UDim2.new(1, -20, 0, 20)
         container.AnchorPoint = Vector2.new(1, 0)
         container.ClipsDescendants = false
         container.Parent = gui
-
-        container.Position = UDim2.new(1, -20, 0, 20)
 
         local layout = Instance.new("UIListLayout")
         layout.SortOrder = Enum.SortOrder.LayoutOrder
@@ -82,7 +81,7 @@ function DragnirNotif.Send(type, message, duration)
     notifFrame.ClipsDescendants = true
     notifFrame.LayoutOrder = os.clock() * 1000
     notifFrame.AnchorPoint = Vector2.new(1, 0)
-    notifFrame.Position = UDim2.new(1, 0, 0, 0)
+    notifFrame.Position = UDim2.new(1, frameWidth + 40, 0, 0) -- Start off-screen
     notifFrame.Parent = container
 
     local iconColor = Colors[type]
@@ -142,7 +141,7 @@ function DragnirNotif.Send(type, message, duration)
     end)
 
     local function closeNotification()
-        if notifFrame then
+        if notifFrame and notifFrame.Parent then
             local tweenOut = TweenService:Create(notifFrame, TweenInfo.new(0.35, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {
                 Position = UDim2.new(1, frameWidth + 40, 0, 0)
             })
@@ -154,11 +153,8 @@ function DragnirNotif.Send(type, message, duration)
 
     closeButton.MouseButton1Click:Connect(closeNotification)
 
-    local initialPos = notifFrame.Position
-    notifFrame.Position = UDim2.new(1, frameWidth + 40, 0, 0)
-
     local tweenIn = TweenService:Create(notifFrame, TweenInfo.new(0.35, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
-        Position = initialPos
+        Position = UDim2.new(1, -20, 0, 0)
     })
     tweenIn:Play()
 
