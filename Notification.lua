@@ -1,5 +1,3 @@
--- DragnirNotif System (Fixed Version)
-
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
@@ -7,8 +5,8 @@ local Workspace = game:GetService("Workspace")
 local player = Players.LocalPlayer
 local Camera = Workspace.CurrentCamera
 
-local Notif = {}
-Notif.__index = Notif
+local DragnirNotif = {}
+DragnirNotif.__index = DragnirNotif
 
 -- Color configuration
 local Colors = {
@@ -38,7 +36,6 @@ local function getOrCreateGui()
         container.ClipsDescendants = false
         container.Parent = gui
 
-        -- Dynamic top-right positioning
         container.Position = UDim2.new(1, -20, 0, 20)
 
         local layout = Instance.new("UIListLayout")
@@ -56,8 +53,7 @@ local function getOrCreateGui()
     return gui
 end
 
--- Send notification
-function Notif.Send(type, message, duration) -- Changed from : to . for proper calling
+function DragnirNotif.Send(type, message, duration)
     -- Validate input
     if not type or not Colors[type] then
         warn("Invalid notification type: "..tostring(type))
@@ -91,12 +87,10 @@ function Notif.Send(type, message, duration) -- Changed from : to . for proper c
 
     local iconColor = Colors[type]
 
-    -- Add rounded corners
     local corner = Instance.new("UICorner")
     corner.CornerRadius = UDim.new(0, 3)
     corner.Parent = notifFrame
 
-    -- Add border stroke
     local stroke = Instance.new("UIStroke")
     stroke.Color = iconColor
     stroke.Thickness = 1
@@ -104,7 +98,6 @@ function Notif.Send(type, message, duration) -- Changed from : to . for proper c
     stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
     stroke.Parent = notifFrame
 
-    -- Type label (top-left with padding)
     local typeLabel = Instance.new("TextLabel")
     typeLabel.Size = UDim2.new(0, 0, 0, 20)
     typeLabel.Position = UDim2.new(0, 5, 0, 5)
@@ -117,7 +110,6 @@ function Notif.Send(type, message, duration) -- Changed from : to . for proper c
     typeLabel.AutomaticSize = Enum.AutomaticSize.X
     typeLabel.Parent = notifFrame
 
-    -- Main message text
     local text = Instance.new("TextLabel")
     text.Size = UDim2.new(1, -10, 1, -30)
     text.Position = UDim2.new(0, 5, 0, 25)
@@ -131,7 +123,6 @@ function Notif.Send(type, message, duration) -- Changed from : to . for proper c
     text.BackgroundTransparency = 1
     text.Parent = notifFrame
 
-    -- Close button (top-right with padding)
     local closeButton = Instance.new("TextButton")
     closeButton.Size = UDim2.new(0, 20, 0, 20)
     closeButton.Position = UDim2.new(1, -25, 0, 5)
@@ -142,7 +133,6 @@ function Notif.Send(type, message, duration) -- Changed from : to . for proper c
     closeButton.BackgroundTransparency = 1
     closeButton.Parent = notifFrame
 
-    -- Close button hover effect
     closeButton.MouseEnter:Connect(function()
         closeButton.TextColor3 = Color3.new(1, 1, 1)
     end)
@@ -151,7 +141,6 @@ function Notif.Send(type, message, duration) -- Changed from : to . for proper c
         closeButton.TextColor3 = Color3.fromRGB(200, 200, 200)
     end)
 
-    -- Close functionality
     local function closeNotification()
         if notifFrame then
             local tweenOut = TweenService:Create(notifFrame, TweenInfo.new(0.35, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {
@@ -165,7 +154,6 @@ function Notif.Send(type, message, duration) -- Changed from : to . for proper c
 
     closeButton.MouseButton1Click:Connect(closeNotification)
 
-    -- Tween in from the right
     local initialPos = notifFrame.Position
     notifFrame.Position = UDim2.new(1, frameWidth + 40, 0, 0)
 
@@ -174,10 +162,9 @@ function Notif.Send(type, message, duration) -- Changed from : to . for proper c
     })
     tweenIn:Play()
 
-    -- Auto-close after duration
     if duration > 0 then
         task.delay(duration, closeNotification)
     end
 end
 
-return Notif
+return DragnirNotif
