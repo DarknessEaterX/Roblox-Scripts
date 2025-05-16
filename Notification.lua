@@ -109,9 +109,9 @@ function Notif:Send(type, message, duration)
     closeBtn.AnchorPoint = Vector2.new(1, 0)
     closeBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
     closeBtn.BorderSizePixel = 0
-    closeBtn.Text = "✕"
+    closeBtn.Text = "X"
     closeBtn.TextColor3 = Color3.fromRGB(255, 100, 100)
-    closeBtn.Font = Enum.Font.GothamBold
+    closeBtn.Font = Enum.Font.SpecialElite
     closeBtn.TextSize = 18
     closeBtn.Parent = notifFrame
 
