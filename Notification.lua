@@ -11,26 +11,38 @@ Notif.__index = Notif
 local Icons = {
     Success = "✓",
     Warning = "⚠",
-    Error = "✕",
-    Info = "ℹ"
+    Error   = "✕",
+    Info    = "ℹ"
 }
 
 local Colors = {
-    Success = Color3.fromRGB(0, 255, 0),
+    Success = Color3.fromRGB(59, 201, 87),
     Warning = Color3.fromRGB(255, 200, 0),
-    Error = Color3.fromRGB(255, 60, 60),
-    Info = Color3.fromRGB(100, 200, 255)
+    Error   = Color3.fromRGB(255, 60, 60),
+    Info    = Color3.fromRGB(100, 200, 255)
 }
 
+-- Utility: Safe WaitForChild chain
+local function safeWaitForChild(parent, childName, timeout)
+    local ok, obj = pcall(function()
+        return parent:WaitForChild(childName, timeout or 2)
+    end)
+    return ok and obj or nil
+end
+
+-- Singleton: Ensures only one ScreenGui exists
 local function getOrCreateGui()
-    local gui = player:FindFirstChild("PlayerGui"):FindFirstChild("DragnirNotif")
+    local pg = safeWaitForChild(player, "PlayerGui")
+    if not pg then return nil end
+
+    local gui = pg:FindFirstChild("DragnirNotif")
     if not gui then
         gui = Instance.new("ScreenGui")
         gui.Name = "DragnirNotif"
         gui.IgnoreGuiInset = true
         gui.ResetOnSpawn = false
         gui.ZIndexBehavior = Enum.ZIndexBehavior.Global
-        gui.Parent = player:WaitForChild("PlayerGui")
+        gui.Parent = pg
 
         local container = Instance.new("Frame")
         container.Name = "Container"
@@ -43,7 +55,7 @@ local function getOrCreateGui()
 
         local layout = Instance.new("UIListLayout")
         layout.SortOrder = Enum.SortOrder.LayoutOrder
-        layout.Padding = UDim.new(0, 6)
+        layout.Padding = UDim.new(0, 7)
         layout.VerticalAlignment = Enum.VerticalAlignment.Top
         layout.HorizontalAlignment = Enum.HorizontalAlignment.Right
         layout.Parent = container
@@ -56,19 +68,22 @@ local function getOrCreateGui()
     return gui
 end
 
-function Notif:Send(type, message, duration)
+function Notif:Send(type, message, duration, onClose)
     local gui = getOrCreateGui()
+    if not gui then return end
+
     local container = gui:FindFirstChild("Container")
     if not container then return end
 
+    -- Dynamic sizing (multiline support)
     local screenSize = Camera.ViewportSize
-    local frameWidth = math.clamp(screenSize.X * 0.4, 240, 400)
-    local frameHeight = 80  -- Increased height for multiline support
+    local frameWidth = math.clamp(screenSize.X * 0.4, 240, 420)
+    local frameHeight = 80
 
     local notifFrame = Instance.new("Frame")
     notifFrame.Size = UDim2.new(0, frameWidth, 0, frameHeight)
-    notifFrame.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-    notifFrame.BackgroundTransparency = 0.1
+    notifFrame.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
+    notifFrame.BackgroundTransparency = 0.07
     notifFrame.BorderSizePixel = 0
     notifFrame.ClipsDescendants = true
     notifFrame.LayoutOrder = os.clock() * 1000
@@ -76,88 +91,99 @@ function Notif:Send(type, message, duration)
     notifFrame.Position = UDim2.new(1, 0, 0, 0)
     notifFrame.Parent = container
 
-    local iconColor = Colors[type] or Color3.fromRGB(255, 255, 255)
+    -- Drop shadow
+    local shadow = Instance.new("ImageLabel")
+    shadow.Size = UDim2.new(1, 8, 1, 8)
+    shadow.Position = UDim2.new(0, -4, 0, -4)
+    shadow.BackgroundTransparency = 1
+    shadow.Image = "rbxassetid://1316045217"
+    shadow.ImageTransparency = 0.7
+    shadow.ZIndex = 0
+    shadow.Parent = notifFrame
 
+    -- UI polish
     local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 3)
+    corner.CornerRadius = UDim.new(0, 5)
     corner.Parent = notifFrame
 
     local stroke = Instance.new("UIStroke")
-    stroke.Color = iconColor
-    stroke.Thickness = 1
-    stroke.Transparency = 0.5
+    stroke.Color = Colors[type] or Color3.fromRGB(255, 255, 255)
+    stroke.Thickness = 1.5
+    stroke.Transparency = 0.25
     stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
     stroke.Parent = notifFrame
 
-    -- TextLabel (top-left) instead of icon, with padding 5,5
+    -- Icon
     local iconLabel = Instance.new("TextLabel")
     iconLabel.Size = UDim2.new(0, 30, 0, 30)
-    iconLabel.Position = UDim2.new(0, 5, 0, 5)
+    iconLabel.Position = UDim2.new(0, 8, 0, 8)
     iconLabel.Text = Icons[type] or "?"
     iconLabel.Font = Enum.Font.GothamBold
     iconLabel.TextSize = 24
-    iconLabel.TextColor3 = iconColor
+    iconLabel.TextColor3 = Colors[type] or Color3.fromRGB(255,255,255)
     iconLabel.BackgroundTransparency = 1
-    iconLabel.TextWrapped = true
+    iconLabel.ZIndex = 2
     iconLabel.Parent = notifFrame
 
-    -- Close button top-right with 5 padding
+    -- Close button
     local closeButton = Instance.new("TextButton")
-    closeButton.Size = UDim2.new(0, 20, 0, 20)
-    closeButton.Position = UDim2.new(1, -25, 0, 5) -- 5 right padding, 5 top padding
+    closeButton.Size = UDim2.new(0, 22, 0, 22)
+    closeButton.Position = UDim2.new(1, -30, 0, 8)
     closeButton.Text = "×"
     closeButton.Font = Enum.Font.GothamBold
-    closeButton.TextSize = 20
-    closeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    closeButton.BackgroundTransparency = 0.5
-    closeButton.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+    closeButton.TextSize = 18
+    closeButton.TextColor3 = Color3.fromRGB(240, 240, 240)
+    closeButton.BackgroundTransparency = 0.35
+    closeButton.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
     closeButton.AutoButtonColor = true
+    closeButton.ZIndex = 2
     closeButton.Parent = notifFrame
 
-    -- Text content label with wrapping and padding to avoid icon and close button
+    -- Main message
     local text = Instance.new("TextLabel")
-    text.Size = UDim2.new(1, -60, 1, 0) -- leave space for icon + close
-    text.Position = UDim2.new(0, 40, 0, 0)
+    text.Size = UDim2.new(1, -75, 1, -26)
+    text.Position = UDim2.new(0, 45, 0, 8)
     text.Text = message or "Notification"
     text.Font = Enum.Font.Gotham
     text.TextSize = 16
     text.TextColor3 = Color3.new(1, 1, 1)
     text.TextXAlignment = Enum.TextXAlignment.Left
+    text.TextYAlignment = Enum.TextYAlignment.Top
     text.TextWrapped = true
     text.BackgroundTransparency = 1
+    text.ZIndex = 2
     text.Parent = notifFrame
 
-    -- Tween in from the right
-    local initialPos = notifFrame.Position
-    notifFrame.Position = UDim2.new(1, frameWidth + 40, 0, 0)
-
-    local tweenIn = TweenService:Create(notifFrame, TweenInfo.new(0.35, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
-        Position = initialPos
+    -- Tween in
+    notifFrame.Position = UDim2.new(1, frameWidth + 40, 0, notifFrame.Position.Y.Offset)
+    local tweenIn = TweenService:Create(notifFrame, TweenInfo.new(0.38, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+        Position = UDim2.new(1, 0, 0, notifFrame.Position.Y.Offset)
     })
     tweenIn:Play()
 
-    -- Close button functionality
-    closeButton.MouseButton1Click:Connect(function()
-        local tweenOut = TweenService:Create(notifFrame, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
-            Position = UDim2.new(1, frameWidth + 40, 0, 0)
-        })
-        tweenOut:Play()
-        tweenOut.Completed:Wait()
-        notifFrame:Destroy()
-    end)
+    -- Close logic
+    local function closeNotif()
+        if notifFrame and notifFrame.Parent then
+            local tweenOut = TweenService:Create(notifFrame, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+                Position = UDim2.new(1, frameWidth + 40, 0, notifFrame.Position.Y.Offset)
+            })
+            tweenOut:Play()
+            tweenOut.Completed:Wait()
+            if notifFrame then notifFrame:Destroy() end
+            if typeof(onClose) == "function" then
+                pcall(onClose)
+            end
+        end
+    end
 
-    -- Auto close only if duration is a positive number
+    closeButton.MouseButton1Click:Connect(closeNotif)
+
+    -- Auto close
     if duration and duration > 0 then
         task.delay(duration, function()
-            if notifFrame and notifFrame.Parent then
-                local tweenOut = TweenService:Create(notifFrame, TweenInfo.new(0.35, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {
-                    Position = UDim2.new(1, frameWidth + 40, 0, 0)
-                })
-                tweenOut:Play()
-                tweenOut.Completed:Wait()
-                notifFrame:Destroy()
-            end
+            closeNotif()
         end)
     end
 end
+
 return Notif
