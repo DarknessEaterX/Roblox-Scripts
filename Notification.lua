@@ -5,10 +5,16 @@ local Workspace = game:GetService("Workspace")
 local player = Players.LocalPlayer
 local Camera = Workspace.CurrentCamera
 
-local DragnirNotif = {}
-DragnirNotif.__index = DragnirNotif
+local Notif = {}
+Notif.__index = Notif
 
--- Color configuration
+local Icons = {
+    Success = "✓",
+    Warning = "⚠",
+    Error = "✕",
+    Info = "ℹ"
+}
+
 local Colors = {
     Success = Color3.fromRGB(0, 255, 0),
     Warning = Color3.fromRGB(255, 200, 0),
@@ -16,17 +22,15 @@ local Colors = {
     Info = Color3.fromRGB(100, 200, 255)
 }
 
--- Get or create the GUI container once
 local function getOrCreateGui()
-    local playerGui = player:WaitForChild("PlayerGui")
-    local gui = playerGui:FindFirstChild("DragnirNotif")
+    local gui = player:FindFirstChild("PlayerGui"):FindFirstChild("DragnirNotif")
     if not gui then
         gui = Instance.new("ScreenGui")
         gui.Name = "DragnirNotif"
         gui.IgnoreGuiInset = true
         gui.ResetOnSpawn = false
         gui.ZIndexBehavior = Enum.ZIndexBehavior.Global
-        gui.Parent = playerGui
+        gui.Parent = player:WaitForChild("PlayerGui")
 
         local container = Instance.new("Frame")
         container.Name = "Container"
@@ -52,19 +56,7 @@ local function getOrCreateGui()
     return gui
 end
 
-function DragnirNotif.Send(type, message, duration)
-    -- Validate input
-    if not type or not Colors[type] then
-        warn("Invalid notification type: "..tostring(type))
-        type = "Info"
-    end
-    
-    if not message or type(message) ~= "string" then
-        message = "Notification"
-    end
-    
-    duration = tonumber(duration) or 3
-
+function Notif:Send(type, message, duration)
     local gui = getOrCreateGui()
     local container = gui:FindFirstChild("Container")
     if not container then return end
@@ -79,12 +71,12 @@ function DragnirNotif.Send(type, message, duration)
     notifFrame.BackgroundTransparency = 0.1
     notifFrame.BorderSizePixel = 0
     notifFrame.ClipsDescendants = true
-    notifFrame.LayoutOrder = os.clock() * 1000
+    notifFrame.LayoutOrder = math.floor(os.clock() * 1000)
     notifFrame.AnchorPoint = Vector2.new(1, 0)
-    notifFrame.Position = UDim2.new(1, frameWidth + 40, 0, 0) -- Start off-screen
+    notifFrame.Position = UDim2.new(1, 0, 0, 0)
     notifFrame.Parent = container
 
-    local iconColor = Colors[type]
+    local iconColor = Colors[type] or Color3.new(1, 1, 1)
 
     local corner = Instance.new("UICorner")
     corner.CornerRadius = UDim.new(0, 3)
@@ -97,50 +89,65 @@ function DragnirNotif.Send(type, message, duration)
     stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
     stroke.Parent = notifFrame
 
-    local typeLabel = Instance.new("TextLabel")
-    typeLabel.Size = UDim2.new(0, 0, 0, 20)
-    typeLabel.Position = UDim2.new(0, 5, 0, 5)
-    typeLabel.Text = string.upper(type)
-    typeLabel.Font = Enum.Font.GothamBold
-    typeLabel.TextSize = 14
-    typeLabel.TextColor3 = iconColor
-    typeLabel.BackgroundTransparency = 1
-    typeLabel.TextXAlignment = Enum.TextXAlignment.Left
-    typeLabel.AutomaticSize = Enum.AutomaticSize.X
-    typeLabel.Parent = notifFrame
+    -- Icon TextLabel (top-left with padding)
+    local icon = Instance.new("TextLabel")
+    icon.Size = UDim2.new(0, 24, 0, 24)
+    icon.Position = UDim2.new(0, 5, 0, 5)
+    icon.BackgroundTransparency = 1
+    icon.Text = Icons[type] or "?"
+    icon.Font = Enum.Font.GothamBold
+    icon.TextSize = 24
+    icon.TextColor3 = iconColor
+    icon.TextXAlignment = Enum.TextXAlignment.Center
+    icon.TextYAlignment = Enum.TextYAlignment.Center
+    icon.Parent = notifFrame
 
+    -- Close button (top-right with padding)
+    local closeBtn = Instance.new("TextButton")
+    closeBtn.Size = UDim2.new(0, 20, 0, 20)
+    closeBtn.Position = UDim2.new(1, -25, 0, 5)
+    closeBtn.AnchorPoint = Vector2.new(1, 0)
+    closeBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    closeBtn.BorderSizePixel = 0
+    closeBtn.Text = "✕"
+    closeBtn.TextColor3 = Color3.fromRGB(255, 100, 100)
+    closeBtn.Font = Enum.Font.GothamBold
+    closeBtn.TextSize = 18
+    closeBtn.Parent = notifFrame
+
+    closeBtn.MouseButton1Click:Connect(function()
+        -- Tween out and destroy immediately on close
+        local tweenOut = TweenService:Create(notifFrame, TweenInfo.new(0.25, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {
+            Position = UDim2.new(1, frameWidth + 40, 0, 0)
+        })
+        tweenOut:Play()
+        tweenOut.Completed:Wait()
+        notifFrame:Destroy()
+    end)
+
+    -- Message text label (leaves room for icon and close button)
     local text = Instance.new("TextLabel")
-    text.Size = UDim2.new(1, -10, 1, -30)
-    text.Position = UDim2.new(0, 5, 0, 25)
-    text.Text = message
+    text.Size = UDim2.new(1, -60, 1, 0)
+    text.Position = UDim2.new(0, 35, 0, 0)
+    text.BackgroundTransparency = 1
+    text.Text = message or "Notification"
     text.Font = Enum.Font.Gotham
     text.TextSize = 16
     text.TextColor3 = Color3.new(1, 1, 1)
     text.TextXAlignment = Enum.TextXAlignment.Left
-    text.TextYAlignment = Enum.TextYAlignment.Top
-    text.TextWrapped = true
-    text.BackgroundTransparency = 1
+    text.TextYAlignment = Enum.TextYAlignment.Center
     text.Parent = notifFrame
 
-    local closeButton = Instance.new("TextButton")
-    closeButton.Size = UDim2.new(0, 20, 0, 20)
-    closeButton.Position = UDim2.new(1, -25, 0, 5)
-    closeButton.Text = "×"
-    closeButton.Font = Enum.Font.GothamBold
-    closeButton.TextSize = 18
-    closeButton.TextColor3 = Color3.fromRGB(200, 200, 200)
-    closeButton.BackgroundTransparency = 1
-    closeButton.Parent = notifFrame
+    -- Tween in from right
+    local initialPos = notifFrame.Position
+    notifFrame.Position = UDim2.new(1, frameWidth + 40, 0, 0)
 
-    closeButton.MouseEnter:Connect(function()
-        closeButton.TextColor3 = Color3.new(1, 1, 1)
-    end)
-    
-    closeButton.MouseLeave:Connect(function()
-        closeButton.TextColor3 = Color3.fromRGB(200, 200, 200)
-    end)
+    local tweenIn = TweenService:Create(notifFrame, TweenInfo.new(0.35, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+        Position = initialPos
+    })
+    tweenIn:Play()
 
-    local function closeNotification()
+    task.delay(duration or 3, function()
         if notifFrame and notifFrame.Parent then
             local tweenOut = TweenService:Create(notifFrame, TweenInfo.new(0.35, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {
                 Position = UDim2.new(1, frameWidth + 40, 0, 0)
@@ -149,18 +156,7 @@ function DragnirNotif.Send(type, message, duration)
             tweenOut.Completed:Wait()
             notifFrame:Destroy()
         end
-    end
-
-    closeButton.MouseButton1Click:Connect(closeNotification)
-
-    local tweenIn = TweenService:Create(notifFrame, TweenInfo.new(0.35, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
-        Position = UDim2.new(1, -20, 0, 0)
-    })
-    tweenIn:Play()
-
-    if duration > 0 then
-        task.delay(duration, closeNotification)
-    end
+    end)
 end
 
-return DragnirNotif
+return Notif
