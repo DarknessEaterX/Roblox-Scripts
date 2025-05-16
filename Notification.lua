@@ -8,6 +8,8 @@ local Camera = Workspace.CurrentCamera
 local Notif = {}
 Notif.__index = Notif
 
+local MAX_NOTIFICATIONS = 5
+
 local Icons = {
     Success = "✓",
     Warning = "⚠",
@@ -22,15 +24,13 @@ local Colors = {
     Info    = Color3.fromRGB(100, 200, 255)
 }
 
--- Utility: Safe WaitForChild chain
-local function safeWaitForChild(parent, childName, timeout)
+local safeWaitForChild = function(parent, childName, timeout)
     local ok, obj = pcall(function()
         return parent:WaitForChild(childName, timeout or 2)
     end)
     return ok and obj or nil
 end
 
--- Singleton: Ensures only one ScreenGui exists
 local function getOrCreateGui()
     local pg = safeWaitForChild(player, "PlayerGui")
     if not pg then return nil end
@@ -68,20 +68,30 @@ local function getOrCreateGui()
     return gui
 end
 
+-- Track notifications for stacking/limiting
+local activeNotifications = {}
+
+local function capNotifications(container)
+    while #activeNotifications > MAX_NOTIFICATIONS do
+        local notif = table.remove(activeNotifications, 1)
+        if notif and notif.Close then notif:Close("stacked") end
+    end
+end
+
 function Notif:Send(type, message, duration, onClose)
+    type = Icons[type] and type or "Info"
+    duration = tonumber(duration) or 4
+
     local gui = getOrCreateGui()
     if not gui then return end
-
     local container = gui:FindFirstChild("Container")
     if not container then return end
 
-    -- Dynamic sizing (multiline support)
+    -- Notification frame
     local screenSize = Camera.ViewportSize
     local frameWidth = math.clamp(screenSize.X * 0.4, 240, 420)
-    local frameHeight = 80
-
     local notifFrame = Instance.new("Frame")
-    notifFrame.Size = UDim2.new(0, frameWidth, 0, frameHeight)
+    notifFrame.Size = UDim2.new(0, frameWidth, 0, 80)
     notifFrame.BackgroundColor3 = Color3.fromRGB(45, 45, 45)
     notifFrame.BackgroundTransparency = 0.07
     notifFrame.BorderSizePixel = 0
@@ -101,13 +111,12 @@ function Notif:Send(type, message, duration, onClose)
     shadow.ZIndex = 0
     shadow.Parent = notifFrame
 
-    -- UI polish
     local corner = Instance.new("UICorner")
     corner.CornerRadius = UDim.new(0, 5)
     corner.Parent = notifFrame
 
     local stroke = Instance.new("UIStroke")
-    stroke.Color = Colors[type] or Color3.fromRGB(255, 255, 255)
+    stroke.Color = Colors[type]
     stroke.Thickness = 1.5
     stroke.Transparency = 0.25
     stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
@@ -117,10 +126,10 @@ function Notif:Send(type, message, duration, onClose)
     local iconLabel = Instance.new("TextLabel")
     iconLabel.Size = UDim2.new(0, 30, 0, 30)
     iconLabel.Position = UDim2.new(0, 8, 0, 8)
-    iconLabel.Text = Icons[type] or "?"
+    iconLabel.Text = Icons[type]
     iconLabel.Font = Enum.Font.GothamBold
     iconLabel.TextSize = 24
-    iconLabel.TextColor3 = Colors[type] or Color3.fromRGB(255,255,255)
+    iconLabel.TextColor3 = Colors[type]
     iconLabel.BackgroundTransparency = 1
     iconLabel.ZIndex = 2
     iconLabel.Parent = notifFrame
@@ -139,6 +148,14 @@ function Notif:Send(type, message, duration, onClose)
     closeButton.ZIndex = 2
     closeButton.Parent = notifFrame
 
+    -- Hover effect for close
+    closeButton.MouseEnter:Connect(function()
+        closeButton.BackgroundColor3 = Color3.fromRGB(120, 80, 80)
+    end)
+    closeButton.MouseLeave:Connect(function()
+        closeButton.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+    end)
+
     -- Main message
     local text = Instance.new("TextLabel")
     text.Size = UDim2.new(1, -75, 1, -26)
@@ -153,38 +170,64 @@ function Notif:Send(type, message, duration, onClose)
     text.BackgroundTransparency = 1
     text.ZIndex = 2
     text.Parent = notifFrame
-    
 
-    -- Tween in
+    -- Responsive Height
+    text.Size = UDim2.new(1, -75, 1, -26)
+    text.AutomaticSize = Enum.AutomaticSize.Y
+    notifFrame.AutomaticSize = Enum.AutomaticSize.Y
+
+    -- Animation IN (slide + fade)
     notifFrame.Position = UDim2.new(1, frameWidth + 40, 0, notifFrame.Position.Y.Offset)
+    notifFrame.BackgroundTransparency = 1
     local tweenIn = TweenService:Create(notifFrame, TweenInfo.new(0.38, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
-        Position = UDim2.new(1, 0, 0, notifFrame.Position.Y.Offset)
+        Position = UDim2.new(1, 0, 0, notifFrame.Position.Y.Offset),
+        BackgroundTransparency = 0.07
     })
     tweenIn:Play()
 
-    -- Close logic
-    local function closeNotif()
-        if notifFrame and notifFrame.Parent then
-            local tweenOut = TweenService:Create(notifFrame, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
-                Position = UDim2.new(1, frameWidth + 40, 0, notifFrame.Position.Y.Offset)
-            })
-            tweenOut:Play()
-            tweenOut.Completed:Wait()
-            if notifFrame then notifFrame:Destroy() end
-            if typeof(onClose) == "function" then
-                pcall(onClose)
-            end
+    local closed = false
+
+    -- Closure handler
+    local function doClose(reason)
+        if closed then return end
+        closed = true
+        -- Animation OUT (slide + fade)
+        local tweenOut = TweenService:Create(notifFrame, TweenInfo.new(0.33, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+            Position = UDim2.new(1, frameWidth + 40, 0, notifFrame.Position.Y.Offset),
+            BackgroundTransparency = 1
+        })
+        tweenOut:Play()
+        tweenOut.Completed:Wait()
+        if notifFrame.Parent then notifFrame:Destroy() end
+        if typeof(onClose) == "function" then
+            pcall(onClose, reason or "closed")
         end
     end
 
-    closeButton.MouseButton1Click:Connect(closeNotif)
+    -- User close
+    closeButton.MouseButton1Click:Connect(function()
+        doClose("user")
+    end)
 
     -- Auto close
-    if duration and duration > 0 then
+    if duration > 0 then
         task.delay(duration, function()
-            closeNotif()
+            doClose("timeout")
         end)
     end
+
+    -- Closure API
+    notifFrame.Close = doClose
+
+    -- Stacking management
+    table.insert(activeNotifications, notifFrame)
+    capNotifications(container)
+
+    return notifFrame
+end
+
+function Notif.new()
+    return setmetatable({}, Notif)
 end
 
 return Notif
