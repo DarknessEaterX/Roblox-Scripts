@@ -63,7 +63,7 @@ function Notif:Send(type, message, duration)
 
     local screenSize = Camera.ViewportSize
     local frameWidth = math.clamp(screenSize.X * 0.4, 240, 400)
-    local frameHeight = 50
+    local frameHeight = 80  -- Increased height for multiline support
 
     local notifFrame = Instance.new("Frame")
     notifFrame.Size = UDim2.new(0, frameWidth, 0, frameHeight)
@@ -71,12 +71,12 @@ function Notif:Send(type, message, duration)
     notifFrame.BackgroundTransparency = 0.1
     notifFrame.BorderSizePixel = 0
     notifFrame.ClipsDescendants = true
-    notifFrame.LayoutOrder = math.floor(os.clock() * 1000)
+    notifFrame.LayoutOrder = os.clock() * 1000
     notifFrame.AnchorPoint = Vector2.new(1, 0)
     notifFrame.Position = UDim2.new(1, 0, 0, 0)
     notifFrame.Parent = container
 
-    local iconColor = Colors[type] or Color3.new(1, 1, 1)
+    local iconColor = Colors[type] or Color3.fromRGB(255, 255, 255)
 
     local corner = Instance.new("UICorner")
     corner.CornerRadius = UDim.new(0, 3)
@@ -89,56 +89,45 @@ function Notif:Send(type, message, duration)
     stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
     stroke.Parent = notifFrame
 
-    -- Icon TextLabel (top-left with padding)
-    local icon = Instance.new("TextLabel")
-    icon.Size = UDim2.new(0, 24, 0, 24)
-    icon.Position = UDim2.new(0, 5, 0, 5)
-    icon.BackgroundTransparency = 1
-    icon.Text = Icons[type] or "?"
-    icon.Font = Enum.Font.GothamBold
-    icon.TextSize = 24
-    icon.TextColor3 = iconColor
-    icon.TextXAlignment = Enum.TextXAlignment.Center
-    icon.TextYAlignment = Enum.TextYAlignment.Center
-    icon.Parent = notifFrame
+    -- TextLabel (top-left) instead of icon, with padding 5,5
+    local iconLabel = Instance.new("TextLabel")
+    iconLabel.Size = UDim2.new(0, 30, 0, 30)
+    iconLabel.Position = UDim2.new(0, 5, 0, 5)
+    iconLabel.Text = Icons[type] or "?"
+    iconLabel.Font = Enum.Font.GothamBold
+    iconLabel.TextSize = 24
+    iconLabel.TextColor3 = iconColor
+    iconLabel.BackgroundTransparency = 1
+    iconLabel.TextWrapped = true
+    iconLabel.Parent = notifFrame
 
-    -- Close button (top-right with padding)
-    local closeBtn = Instance.new("TextButton")
-    closeBtn.Size = UDim2.new(0, 20, 0, 20)
-    closeBtn.Position = UDim2.new(1, -25, 0, 5)
-    closeBtn.AnchorPoint = Vector2.new(1, 0)
-    closeBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-    closeBtn.BorderSizePixel = 0
-    closeBtn.Text = "X"
-    closeBtn.TextColor3 = Color3.fromRGB(255, 100, 100)
-    closeBtn.Font = Enum.Font.SpecialElite
-    closeBtn.TextSize = 18
-    closeBtn.Parent = notifFrame
+    -- Close button top-right with 5 padding
+    local closeButton = Instance.new("TextButton")
+    closeButton.Size = UDim2.new(0, 20, 0, 20)
+    closeButton.Position = UDim2.new(1, -25, 0, 5) -- 5 right padding, 5 top padding
+    closeButton.Text = "×"
+    closeButton.Font = Enum.Font.GothamBold
+    closeButton.TextSize = 20
+    closeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    closeButton.BackgroundTransparency = 0.5
+    closeButton.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+    closeButton.AutoButtonColor = true
+    closeButton.Parent = notifFrame
 
-    closeBtn.MouseButton1Click:Connect(function()
-        -- Tween out and destroy immediately on close
-        local tweenOut = TweenService:Create(notifFrame, TweenInfo.new(0.25, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {
-            Position = UDim2.new(1, frameWidth + 40, 0, 0)
-        })
-        tweenOut:Play()
-        tweenOut.Completed:Wait()
-        notifFrame:Destroy()
-    end)
-
-    -- Message text label (leaves room for icon and close button)
+    -- Text content label with wrapping and padding to avoid icon and close button
     local text = Instance.new("TextLabel")
-    text.Size = UDim2.new(1, -60, 1, 0)
-    text.Position = UDim2.new(0, 35, 0, 0)
-    text.BackgroundTransparency = 1
+    text.Size = UDim2.new(1, -60, 1, 0) -- leave space for icon + close
+    text.Position = UDim2.new(0, 40, 0, 0)
     text.Text = message or "Notification"
     text.Font = Enum.Font.Gotham
     text.TextSize = 16
     text.TextColor3 = Color3.new(1, 1, 1)
     text.TextXAlignment = Enum.TextXAlignment.Left
-    text.TextYAlignment = Enum.TextYAlignment.Center
+    text.TextWrapped = true
+    text.BackgroundTransparency = 1
     text.Parent = notifFrame
 
-    -- Tween in from right
+    -- Tween in from the right
     local initialPos = notifFrame.Position
     notifFrame.Position = UDim2.new(1, frameWidth + 40, 0, 0)
 
@@ -147,16 +136,28 @@ function Notif:Send(type, message, duration)
     })
     tweenIn:Play()
 
-    task.delay(duration or 3, function()
-        if notifFrame and notifFrame.Parent then
-            local tweenOut = TweenService:Create(notifFrame, TweenInfo.new(0.35, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {
-                Position = UDim2.new(1, frameWidth + 40, 0, 0)
-            })
-            tweenOut:Play()
-            tweenOut.Completed:Wait()
-            notifFrame:Destroy()
-        end
+    -- Close button functionality
+    closeButton.MouseButton1Click:Connect(function()
+        local tweenOut = TweenService:Create(notifFrame, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+            Position = UDim2.new(1, frameWidth + 40, 0, 0)
+        })
+        tweenOut:Play()
+        tweenOut.Completed:Wait()
+        notifFrame:Destroy()
     end)
-end
 
+    -- Auto close only if duration is a positive number
+    if duration and duration > 0 then
+        task.delay(duration, function()
+            if notifFrame and notifFrame.Parent then
+                local tweenOut = TweenService:Create(notifFrame, TweenInfo.new(0.35, Enum.EasingStyle.Quint, Enum.EasingDirection.In), {
+                    Position = UDim2.new(1, frameWidth + 40, 0, 0)
+                })
+                tweenOut:Play()
+                tweenOut.Completed:Wait()
+                notifFrame:Destroy()
+            end
+        end)
+    end
+end
 return Notif
