@@ -1,4 +1,4 @@
--- DragnirNotif System (Improved Version)
+-- DragnirNotif System (Fixed Version)
 
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
@@ -57,7 +57,7 @@ local function getOrCreateGui()
 end
 
 -- Send notification
-function Notif:Send(type, message, duration)
+function Notif.Send(type, message, duration) -- Changed from : to . for proper calling
     -- Validate input
     if not type or not Colors[type] then
         warn("Invalid notification type: "..tostring(type))
