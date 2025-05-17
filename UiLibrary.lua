@@ -145,6 +145,79 @@ function UILibrary:SetupViewportScaling()
     end)
 end
 
+function UILibrary:SetupDrag()
+    local dragStartPos
+    local frameStartPos
+    local dragging = false
+    
+    local function updatePosition(input)
+        if not self._draggable then return end
+        
+        local delta = input.Position - dragStartPos
+        local newPosition = UDim2.new(
+            frameStartPos.X.Scale,
+            frameStartPos.X.Offset + delta.X,
+            frameStartPos.Y.Scale,
+            frameStartPos.Y.Offset + delta.Y
+        )
+        
+        -- Keep window within screen bounds
+        local viewportSize = workspace.CurrentCamera.ViewportSize
+        local frameSize = self._mainFrame.AbsoluteSize
+        local absPos = self._mainFrame.AbsolutePosition
+        
+        -- Calculate min/max positions
+        local minX = -absPos.X + 20
+        local maxX = viewportSize.X - (absPos.X + frameSize.X) - 20
+        local minY = -absPos.Y + 20
+        local maxY = viewportSize.Y - (absPos.Y + frameSize.Y) - 20
+        
+        -- Apply constraints
+        newPosition = UDim2.new(
+            newPosition.X.Scale,
+            math.clamp(newPosition.X.Offset, minX, maxX),
+            newPosition.Y.Scale,
+            math.clamp(newPosition.Y.Offset, minY, maxY)
+        )
+        
+        self._mainFrame.Position = newPosition
+    end
+    
+    -- Mouse input
+    self._titleBar.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStartPos = input.Position
+            frameStartPos = self._mainFrame.Position
+            
+            -- Visual feedback
+            tween(self._titleBar, {BackgroundColor3 = Color3.fromRGB(60, 60, 60)}, 0.1)
+            
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                    tween(self._titleBar, {BackgroundColor3 = self._theme.Foreground}, 0.1)
+                end
+            end)
+        end
+    end)
+    
+    -- Mouse movement
+    self._titleBar.InputChanged:Connect(function(input)
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            updatePosition(input)
+        end
+    end)
+    
+    -- Touch movement (needs separate handling for mobile)
+    UserInputService.TouchMoved:Connect(function(touchPos, gameProcessed)
+        if not gameProcessed and dragging then
+            updatePosition({Position = touchPos, UserInputType = Enum.UserInputType.Touch})
+        end
+    end)
+end
+
+
 function UILibrary:CreateWindow(title, size, position, aspectRatio)
     local window = setmetatable({}, self)
     window._title = title or "Window"
@@ -165,9 +238,7 @@ function UILibrary:CreateWindow(title, size, position, aspectRatio)
         Size = window._size,
         Position = window._position,
         AnchorPoint = Vector2.new(0.5, 0.5),
-        Parent = self._screenGui,
-        Active = true,
-        Draggable = true
+        Parent = self._screenGui
     })
     
     -- Add aspect ratio constraint if specified
@@ -279,7 +350,7 @@ function UILibrary:CreateWindow(title, size, position, aspectRatio)
     })
     
     -- Set up drag functionality
-    
+    UILibrary:SetupDrag()
     
     -- Close button event
     window._closeButton.MouseButton1Click:Connect(function()
@@ -290,78 +361,6 @@ function UILibrary:CreateWindow(title, size, position, aspectRatio)
     table.insert(self._windows, window)
     
     return window
-end
-
-function UILibrary:SetupDrag()
-    local dragStartPos
-    local frameStartPos
-    local dragging = false
-    
-    local function updatePosition(input)
-        if not self._draggable then return end
-        
-        local delta = input.Position - dragStartPos
-        local newPosition = UDim2.new(
-            frameStartPos.X.Scale,
-            frameStartPos.X.Offset + delta.X,
-            frameStartPos.Y.Scale,
-            frameStartPos.Y.Offset + delta.Y
-        )
-        
-        -- Keep window within screen bounds
-        local viewportSize = workspace.CurrentCamera.ViewportSize
-        local frameSize = self._mainFrame.AbsoluteSize
-        local absPos = self._mainFrame.AbsolutePosition
-        
-        -- Calculate min/max positions
-        local minX = -absPos.X + 20
-        local maxX = viewportSize.X - (absPos.X + frameSize.X) - 20
-        local minY = -absPos.Y + 20
-        local maxY = viewportSize.Y - (absPos.Y + frameSize.Y) - 20
-        
-        -- Apply constraints
-        newPosition = UDim2.new(
-            newPosition.X.Scale,
-            math.clamp(newPosition.X.Offset, minX, maxX),
-            newPosition.Y.Scale,
-            math.clamp(newPosition.Y.Offset, minY, maxY)
-        )
-        
-        self._mainFrame.Position = newPosition
-    end
-    
-    -- Mouse input
-    self._titleBar.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            dragging = true
-            dragStartPos = input.Position
-            frameStartPos = self._mainFrame.Position
-            
-            -- Visual feedback
-            tween(self._titleBar, {BackgroundColor3 = Color3.fromRGB(60, 60, 60)}, 0.1)
-            
-            input.Changed:Connect(function()
-                if input.UserInputState == Enum.UserInputState.End then
-                    dragging = false
-                    tween(self._titleBar, {BackgroundColor3 = self._theme.Foreground}, 0.1)
-                end
-            end)
-        end
-    end)
-    
-    -- Mouse movement
-    self._titleBar.InputChanged:Connect(function(input)
-        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-            updatePosition(input)
-        end
-    end)
-    
-    -- Touch movement (needs separate handling for mobile)
-    UserInputService.TouchMoved:Connect(function(touchPos, gameProcessed)
-        if not gameProcessed and dragging then
-            updatePosition({Position = touchPos, UserInputType = Enum.UserInputType.Touch})
-        end
-    end)
 end
 
 function UILibrary:SetDraggable(draggable)
