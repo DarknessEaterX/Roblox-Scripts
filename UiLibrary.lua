@@ -264,34 +264,36 @@ function UILibrary:CreateWindow(title, size, position, aspectRatio)
 
     -- Window methods
     function window:Close()
-        if not self._isOpen then return end
-        
-        self._isOpen = false
-        TweenService:Create(self._mainFrame, TweenInfo.new(self._animationSpeed), {Size = UDim2.new(0, 0, 0, 0)}):Play()
-        
-        delay(self._animationSpeed + 0.1, function()
-            if self._mainFrame then
-                self._mainFrame:Destroy()
-            end
-        end)
-    end
-
-    function window:Open()
-        if self._isOpen then return end
-        
-        self._isOpen = true
-        self._mainFrame.Size = UDim2.new(0, 0, 0, 0)
-        self._mainFrame.Visible = true
-        TweenService:Create(self._mainFrame, TweenInfo.new(self._animationSpeed), {Size = self._size}):Play()
-    end
-
-    function window:Toggle()
-        if self._isOpen then
-            self:Close()
-        else
-            self:Open()
+    if not self._isOpen then return end
+    
+    self._isOpen = false
+    TweenService:Create(
+        self._mainFrame, 
+        TweenInfo.new(self._animationSpeed), -- Fixed: Properly wrapped in TweenInfo
+        {Size = UDim2.new(0, 0, 0, 0)}
+    ):Play()
+    
+    delay(self._animationSpeed + 0.1, function()
+        if self._mainFrame then
+            self._mainFrame:Destroy()
         end
-    end
+    end)
+end
+
+function window:Open()
+    if self._isOpen then return end
+    
+    self._isOpen = true
+    self._mainFrame.Size = UDim2.new(0, 0, 0, 0)
+    self._mainFrame.Visible = true
+    TweenService:Create(
+        self._mainFrame, 
+        TweenInfo.new(self._animationSpeed), -- Fixed here too
+        {Size = self._size}
+    ):Play()
+end
+
+
 
     function window:SetDraggable(draggable)
         self._draggable = draggable
@@ -335,23 +337,32 @@ function UILibrary:CreateWindow(title, size, position, aspectRatio)
         window._mainFrame.Position = newPosition
     end
     
-    window._titleBar.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            dragging = true
-            dragStartPos = input.Position
-            frameStartPos = window._mainFrame.Position
-            
-            -- Visual feedback
-            TweenService:Create(window._titleBar, TweenInfo.new(0.1), {BackgroundColor3 = Color3.fromRGB(60, 60, 60)}):Play()
-            
-            input.Changed:Connect(function()
-                if input.UserInputState == Enum.UserInputState.End then
-                    dragging = false
-                    TweenService:Create(window._titleBar, TweenInfo.new(0.1), {BackgroundColor3 = self._theme.Foreground}):Play()
-                end
-            end)
-        end
-    end)
+    -- Also fix the drag tweens:
+window._titleBar.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStartPos = input.Position
+        frameStartPos = window._mainFrame.Position
+        
+        -- Fixed tween:
+        TweenService:Create(
+            window._titleBar, 
+            TweenInfo.new(0.1), 
+            {BackgroundColor3 = Color3.fromRGB(60, 60, 60)}
+        ):Play()
+        
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                -- Fixed tween:
+                TweenService:Create(
+                    window._titleBar, 
+                    TweenInfo.new(0.1), 
+                    {BackgroundColor3 = self._theme.Foreground}
+                ):Play()
+            end
+        end)
+    end
+end)
     
     window._titleBar.InputChanged:Connect(function(input)
         if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
