@@ -1,3 +1,5 @@
+local Notification = {}
+
 local NotifUI = Instance.new("ScreenGui")
 local Holder = Instance.new("ScrollingFrame")
 local Sorter = Instance.new("UIListLayout")
@@ -35,7 +37,7 @@ local function MergeDefaults(custom, defaults)
 end
 
 -- Notification Creator
-local function CreateNotification(options)
+local function Notification.new(options)
 	local defaults = {
 		Buttons = {
 			[1] = {
@@ -130,5 +132,5 @@ local function CreateNotification(options)
 	end
 end
 
-return CreateNotification
+return Notification
 
