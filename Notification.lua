@@ -4,7 +4,7 @@ Notification.__index = Notification
 -- Default configuration
 local config = {
     Position = UDim2.new(1, -10, 1, -10), -- Bottom right with 10px padding
-    Size = UDim2.new(0, 300, 0, 80),
+    Size = UDim2.new(0, 300, 0, 120), -- Increased height to accommodate content
     BackgroundColor = Color3.fromRGB(30, 30, 30),
     TextColor = Color3.fromRGB(255, 255, 255),
     TitleFont = Enum.Font.SourceSansBold,
@@ -80,7 +80,7 @@ function Notification:createUI()
     contentLabel.TextSize = self.settings.ContentSize
     contentLabel.TextColor3 = self.settings.TextColor
     contentLabel.BackgroundTransparency = 1
-    contentLabel.Size = UDim2.new(1, -20, 1, -titleLabel.Size.Y.Offset - 30)
+    contentLabel.Size = UDim2.new(1, -20, 1, -titleLabel.Size.Y.Offset - 40) -- Adjusted for buttons
     contentLabel.Position = UDim2.new(0, 10, 0, titleLabel.Size.Y.Offset + 15)
     contentLabel.TextXAlignment = Enum.TextXAlignment.Left
     contentLabel.TextYAlignment = Enum.TextYAlignment.Top
@@ -103,8 +103,8 @@ function Notification:createUI()
             button.TextColor3 = self.settings.TextColor
             button.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
             button.AutoButtonColor = true
-            button.Size = UDim2.new(0.9/#self.buttons, 0, 1, 0)
-            button.Position = UDim2.new((i-1) * (0.9/#self.buttons + 0.1/#self.buttons), 0, 0, 0)
+            button.Size = UDim2.new((0.9/#self.buttons), -5, 0, 30)
+            button.Position = UDim2.new((i-1) * (0.9/#self.buttons), 5, 0, 0)
             
             local btnCorner = Instance.new("UICorner")
             btnCorner.CornerRadius = UDim.new(0, 4)
