@@ -183,27 +183,31 @@ function UILibrary:SetupDrag()
         self._mainFrame.Position = newPosition
     end
     
+    -- Wait for titleBar to be initialized
+    local titleBar = self._titleBar
+    if not titleBar then return end
+    
     -- Mouse input
-    self._titleBar.InputBegan:Connect(function(input)
+    titleBar.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
             dragging = true
             dragStartPos = input.Position
             frameStartPos = self._mainFrame.Position
             
             -- Visual feedback
-            tween(self._titleBar, {BackgroundColor3 = Color3.fromRGB(60, 60, 60)}, 0.1)
+            tween(titleBar, {BackgroundColor3 = Color3.fromRGB(60, 60, 60)}, 0.1)
             
             input.Changed:Connect(function()
                 if input.UserInputState == Enum.UserInputState.End then
                     dragging = false
-                    tween(self._titleBar, {BackgroundColor3 = self._theme.Foreground}, 0.1)
+                    tween(titleBar, {BackgroundColor3 = self._theme.Foreground}, 0.1)
                 end
             end)
         end
     end)
     
     -- Mouse movement
-    self._titleBar.InputChanged:Connect(function(input)
+    titleBar.InputChanged:Connect(function(input)
         if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
             updatePosition(input)
         end
