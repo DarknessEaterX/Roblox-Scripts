@@ -145,13 +145,165 @@ function UILibrary:SetupViewportScaling()
     end)
 end
 
-function UILibrary:SetupDrag()
+function UILibrary:CreateWindow(title, size, position, aspectRatio)
+    local window = setmetatable({}, self)
+    window._title = title or "Window"
+    window._size = size or UDim2.new(0, 400, 0, 500)
+    window._position = position or UDim2.new(0.5, 0, 0.5, 0)
+    window._aspectRatio = aspectRatio or (size and size.X.Scale == 0 and size.Y.Scale == 0 and size.X.Offset / size.Y.Offset) or nil
+    window._draggable = true
+    window._isOpen = true
+    window._tabs = {}
+    window._activeTab = nil
+    window._components = {}
+
+    -- Create main window frame
+    window._mainFrame = Instance.new("Frame")
+    window._mainFrame.Name = "Window"
+    window._mainFrame.BackgroundColor3 = self._theme.Background
+    window._mainFrame.BorderSizePixel = 0
+    window._mainFrame.Size = window._size
+    window._mainFrame.Position = window._position
+    window._mainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+    window._mainFrame.Parent = self._screenGui
+
+    -- Add aspect ratio constraint if specified
+    if window._aspectRatio then
+        local aspectRatioConstraint = Instance.new("UIAspectRatioConstraint")
+        aspectRatioConstraint.AspectRatio = window._aspectRatio
+        aspectRatioConstraint.AspectType = Enum.AspectType.ScaleWithParentSize
+        aspectRatioConstraint.DominantAxis = Enum.DominantAxis.Width
+        aspectRatioConstraint.Parent = window._mainFrame
+    end
+
+    -- Add UI scale
+    window._uiScale = Instance.new("UIScale")
+    window._uiScale.Scale = self._scale
+    window._uiScale.Parent = window._mainFrame
+
+    -- Add corner rounding
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 8)
+    corner.Parent = window._mainFrame
+
+    -- Create title bar
+    window._titleBar = Instance.new("Frame")
+    window._titleBar.Name = "TitleBar"
+    window._titleBar.BackgroundColor3 = self._theme.Foreground
+    window._titleBar.Size = UDim2.new(1, 0, 0, 32)
+    window._titleBar.Parent = window._mainFrame
+
+    local titleBarCorner = Instance.new("UICorner")
+    titleBarCorner.CornerRadius = UDim.new(0, 8)
+    titleBarCorner.Parent = window._titleBar
+
+    local titleBarStroke = Instance.new("UIStroke")
+    titleBarStroke.Name = "TitleBarStroke"
+    titleBarStroke.Color = self._theme.Accent
+    titleBarStroke.Thickness = 1
+    titleBarStroke.Parent = window._titleBar
+
+    -- Title text
+    window._titleLabel = Instance.new("TextLabel")
+    window._titleLabel.Name = "Title"
+    window._titleLabel.BackgroundTransparency = 1
+    window._titleLabel.Position = UDim2.new(0, 12, 0, 0)
+    window._titleLabel.Size = UDim2.new(1, -24, 1, 0)
+    window._titleLabel.Font = self._font
+    window._titleLabel.Text = window._title
+    window._titleLabel.TextColor3 = self._theme.Text
+    window._titleLabel.TextSize = self._textSize * self._textSizeMultiplier
+    window._titleLabel.TextXAlignment = Enum.TextXAlignment.Left
+    window._titleLabel.Parent = window._titleBar
+
+    -- Close button
+    window._closeButton = Instance.new("TextButton")
+    window._closeButton.Name = "CloseButton"
+    window._closeButton.BackgroundTransparency = 1
+    window._closeButton.Position = UDim2.new(1, -32, 0, 0)
+    window._closeButton.Size = UDim2.new(0, 32, 1, 0)
+    window._closeButton.Font = self._font
+    window._closeButton.Text = "×"
+    window._closeButton.TextColor3 = self._theme.Text
+    window._closeButton.TextSize = self._textSize * self._textSizeMultiplier * 1.5
+    window._closeButton.Parent = window._titleBar
+
+    -- Tab container
+    window._tabContainer = Instance.new("Frame")
+    window._tabContainer.Name = "TabContainer"
+    window._tabContainer.BackgroundColor3 = self._theme.Foreground
+    window._tabContainer.Position = UDim2.new(0, 0, 0, 32)
+    window._tabContainer.Size = UDim2.new(1, 0, 0, 32)
+    window._tabContainer.Parent = window._mainFrame
+
+    local tabContainerStroke = Instance.new("UIStroke")
+    tabContainerStroke.Color = self._theme.Accent
+    tabContainerStroke.Thickness = 1
+    tabContainerStroke.Parent = window._tabContainer
+
+    -- Content frame
+    window._contentFrame = Instance.new("Frame")
+    window._contentFrame.Name = "Content"
+    window._contentFrame.BackgroundColor3 = self._theme.Background
+    window._contentFrame.Position = UDim2.new(0, 0, 0, 64)
+    window._contentFrame.Size = UDim2.new(1, 0, 1, -64)
+    window._contentFrame.ClipsDescendants = true
+    window._contentFrame.Parent = window._mainFrame
+
+    local contentCorner = Instance.new("UICorner")
+    contentCorner.CornerRadius = UDim.new(0, 8)
+    contentCorner.Parent = window._contentFrame
+
+    -- Tab list layout
+    local tabListLayout = Instance.new("UIListLayout")
+    tabListLayout.Name = "TabListLayout"
+    tabListLayout.FillDirection = Enum.FillDirection.Horizontal
+    tabListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    tabListLayout.Padding = UDim.new(0, 0)
+    tabListLayout.Parent = window._tabContainer
+
+    -- Window methods
+    function window:Close()
+        if not self._isOpen then return end
+        
+        self._isOpen = false
+        TweenService:Create(self._mainFrame, TweenInfo.new(self._animationSpeed), {Size = UDim2.new(0, 0, 0, 0)}):Play()
+        
+        delay(self._animationSpeed + 0.1, function()
+            if self._mainFrame then
+                self._mainFrame:Destroy()
+            end
+        end)
+    end
+
+    function window:Open()
+        if self._isOpen then return end
+        
+        self._isOpen = true
+        self._mainFrame.Size = UDim2.new(0, 0, 0, 0)
+        self._mainFrame.Visible = true
+        TweenService:Create(self._mainFrame, TweenInfo.new(self._animationSpeed), {Size = self._size}):Play()
+    end
+
+    function window:Toggle()
+        if self._isOpen then
+            self:Close()
+        else
+            self:Open()
+        end
+    end
+
+    function window:SetDraggable(draggable)
+        self._draggable = draggable
+    end
+
+    -- Setup drag functionality
     local dragStartPos
     local frameStartPos
     local dragging = false
     
     local function updatePosition(input)
-        if not self._draggable then return end
+        if not window._draggable then return end
         
         local delta = input.Position - dragStartPos
         local newPosition = UDim2.new(
@@ -163,8 +315,8 @@ function UILibrary:SetupDrag()
         
         -- Keep window within screen bounds
         local viewportSize = workspace.CurrentCamera.ViewportSize
-        local frameSize = self._mainFrame.AbsoluteSize
-        local absPos = self._mainFrame.AbsolutePosition
+        local frameSize = window._mainFrame.AbsoluteSize
+        local absPos = window._mainFrame.AbsolutePosition
         
         -- Calculate min/max positions
         local minX = -absPos.X + 20
@@ -180,193 +332,49 @@ function UILibrary:SetupDrag()
             math.clamp(newPosition.Y.Offset, minY, maxY)
         )
         
-        self._mainFrame.Position = newPosition
+        window._mainFrame.Position = newPosition
     end
     
-    -- Wait for titleBar to be initialized
-    local titleBar = self._titleBar
-    if not titleBar then return end
-    
-    -- Mouse input
-    titleBar.InputBegan:Connect(function(input)
+    window._titleBar.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
             dragging = true
             dragStartPos = input.Position
-            frameStartPos = self._mainFrame.Position
+            frameStartPos = window._mainFrame.Position
             
             -- Visual feedback
-            tween(titleBar, {BackgroundColor3 = Color3.fromRGB(60, 60, 60)}, 0.1)
+            TweenService:Create(window._titleBar, TweenInfo.new(0.1), {BackgroundColor3 = Color3.fromRGB(60, 60, 60)}):Play()
             
             input.Changed:Connect(function()
                 if input.UserInputState == Enum.UserInputState.End then
                     dragging = false
-                    tween(titleBar, {BackgroundColor3 = self._theme.Foreground}, 0.1)
+                    TweenService:Create(window._titleBar, TweenInfo.new(0.1), {BackgroundColor3 = self._theme.Foreground}):Play()
                 end
             end)
         end
     end)
     
-    -- Mouse movement
-    titleBar.InputChanged:Connect(function(input)
+    window._titleBar.InputChanged:Connect(function(input)
         if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
             updatePosition(input)
         end
     end)
     
-    -- Touch movement (needs separate handling for mobile)
     UserInputService.TouchMoved:Connect(function(touchPos, gameProcessed)
         if not gameProcessed and dragging then
             updatePosition({Position = touchPos, UserInputType = Enum.UserInputType.Touch})
         end
     end)
-end
 
-
-function UILibrary:CreateWindow(title, size, position, aspectRatio)
-    local window = setmetatable({}, self)
-    window._title = title or "Window"
-    window._size = size or UDim2.new(0, 400, 0, 500)
-    window._position = position or UDim2.new(0.5, 0, 0.5, 0)
-    window._aspectRatio = aspectRatio or (size and size.X.Scale == 0 and size.Y.Scale == 0 and size.X.Offset / size.Y.Offset) or nil
-    window._draggable = true
-    window._isOpen = true
-    window._tabs = {}
-    window._activeTab = nil
-    window._components = {}
-    
-    -- Create main window frame
-    window._mainFrame = create("Frame", {
-        Name = "Window",
-        BackgroundColor3 = self._theme.Background,
-        BorderSizePixel = 0,
-        Size = window._size,
-        Position = window._position,
-        AnchorPoint = Vector2.new(0.5, 0.5),
-        Parent = self._screenGui
-    })
-    
-    -- Add aspect ratio constraint if specified
-    if window._aspectRatio then
-        create("UIAspectRatioConstraint", {
-            AspectRatio = window._aspectRatio,
-            AspectType = Enum.AspectType.ScaleWithParentSize,
-            DominantAxis = Enum.DominantAxis.Width,
-            Parent = window._mainFrame
-        })
-    end
-    
-    -- Add UI scale
-    window._uiScale = create("UIScale", {
-        Scale = self._scale,
-        Parent = window._mainFrame
-    })
-    
-    -- Add corner rounding
-    create("UICorner", {
-        CornerRadius = UDim.new(0, 8),
-        Parent = window._mainFrame
-    })
-    
-    -- Create title bar
-    window._titleBar = create("Frame", {
-        Name = "TitleBar",
-        BackgroundColor3 = self._theme.Foreground,
-        Size = UDim2.new(1, 0, 0, 32),
-        Parent = window._mainFrame
-    })
-    
-    create("UICorner", {
-        CornerRadius = UDim.new(0, 8),
-        Parent = window._titleBar
-    })
-    
-    create("UIStroke", {
-        Name = "TitleBarStroke",
-        Color = self._theme.Accent,
-        Thickness = 1,
-        Parent = window._titleBar
-    })
-    
-    -- Title text
-    window._titleLabel = create("TextLabel", {
-        Name = "Title",
-        BackgroundTransparency = 1,
-        Position = UDim2.new(0, 12, 0, 0),
-        Size = UDim2.new(1, -24, 1, 0),
-        Font = self._font,
-        Text = window._title,
-        TextColor3 = self._theme.Text,
-        TextSize = self._textSize * self._textSizeMultiplier,
-        TextXAlignment = Enum.TextXAlignment.Left,
-        Parent = window._titleBar
-    })
-    
-    -- Close button
-    window._closeButton = create("TextButton", {
-        Name = "CloseButton",
-        BackgroundTransparency = 1,
-        Position = UDim2.new(1, -32, 0, 0),
-        Size = UDim2.new(0, 32, 1, 0),
-        Font = self._font,
-        Text = "×",
-        TextColor3 = self._theme.Text,
-        TextSize = self._textSize * self._textSizeMultiplier * 1.5,
-        Parent = window._titleBar
-    })
-    
-    -- Tab container
-    window._tabContainer = create("Frame", {
-        Name = "TabContainer",
-        BackgroundColor3 = self._theme.Foreground,
-        Position = UDim2.new(0, 0, 0, 32),
-        Size = UDim2.new(1, 0, 0, 32),
-        Parent = window._mainFrame
-    })
-    
-    create("UIStroke", {
-        Color = self._theme.Accent,
-        Thickness = 1,
-        Parent = window._tabContainer
-    })
-    
-    -- Content frame
-    window._contentFrame = create("Frame", {
-        Name = "Content",
-        BackgroundColor3 = self._theme.Background,
-        Position = UDim2.new(0, 0, 0, 64),
-        Size = UDim2.new(1, 0, 1, -64),
-        ClipsDescendants = true,
-        Parent = window._mainFrame
-    })
-    
-    create("UICorner", {
-        CornerRadius = UDim.new(0, 8),
-        Parent = window._contentFrame
-    })
-    
-    -- Tab list layout
-    create("UIListLayout", {
-        Name = "TabListLayout",
-        FillDirection = Enum.FillDirection.Horizontal,
-        SortOrder = Enum.SortOrder.LayoutOrder,
-        Padding = UDim.new(0, 0),
-        Parent = window._tabContainer
-    })
-    
-    -- Set up drag functionality
-    UILibrary:SetupDrag()
-    
     -- Close button event
     window._closeButton.MouseButton1Click:Connect(function()
         window:Close()
     end)
-    
+
     -- Add to windows table
     table.insert(self._windows, window)
     
     return window
 end
-
 function UILibrary:SetDraggable(draggable)
     self._draggable = draggable
 end
