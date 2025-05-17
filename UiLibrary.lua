@@ -165,7 +165,9 @@ function UILibrary:CreateWindow(title, size, position, aspectRatio)
         Size = window._size,
         Position = window._position,
         AnchorPoint = Vector2.new(0.5, 0.5),
-        Parent = self._screenGui
+        Parent = self._screenGui,
+        Active = true,
+        Draggable = true
     })
     
     -- Add aspect ratio constraint if specified
@@ -277,7 +279,7 @@ function UILibrary:CreateWindow(title, size, position, aspectRatio)
     })
     
     -- Set up drag functionality
-    window:SetupDrag()
+    
     
     -- Close button event
     window._closeButton.MouseButton1Click:Connect(function()
