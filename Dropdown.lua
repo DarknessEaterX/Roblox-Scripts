@@ -14,7 +14,7 @@ function Dropdown.new(options, parent, position)
     self.Frame.Parent = parent
 
     local aspect = Instance.new("UIAspectRatioConstraint")
-    aspect.AspectRatio = 5 
+    aspect.AspectRatio = 5
     aspect.DominantAxis = Enum.DominantAxis.Width
     aspect.Parent = self.Frame
 
@@ -28,13 +28,15 @@ function Dropdown.new(options, parent, position)
     self.Button.TextSize = 18
     self.Button.Parent = self.Frame
 
-    self.ListFrame = Instance.new("Frame")
-    self.ListFrame.Size = UDim2.new(1, 0, 0, 0) 
+    self.ListFrame = Instance.new("ScrollingFrame")
+    self.ListFrame.Size = UDim2.new(1, 0, 0, 0)
     self.ListFrame.Position = UDim2.new(0, 0, 1, 5)
     self.ListFrame.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
     self.ListFrame.BorderSizePixel = 0
-    self.ListFrame.ClipsDescendants = true
+    self.ListFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+    self.ListFrame.ScrollBarThickness = 6
     self.ListFrame.Parent = self.Frame
+    self.ListFrame.ClipsDescendants = true
 
     local listAspect = Instance.new("UIAspectRatioConstraint")
     listAspect.AspectRatio = 5
@@ -43,7 +45,6 @@ function Dropdown.new(options, parent, position)
 
     self.Options = options or {}
     self.Items = {}
-
     self.IsOpen = false
     self.Selected = nil
 
@@ -59,7 +60,6 @@ end
 function Dropdown:CreateItems()
     local itemHeight = 30
     local padding = 2
-
     for i, option in ipairs(self.Options) do
         local btn = Instance.new("TextButton")
         btn.Size = UDim2.new(1, -padding*2, 0, itemHeight)
@@ -84,20 +84,20 @@ function Dropdown:CreateItems()
         table.insert(self.Items, btn)
     end
 
-    self.FullHeight = (#self.Options) * (itemHeight + padding) + padding
+    local fullHeight = (#self.Options) * (itemHeight + padding) + padding
+    self.FullHeight = math.min(fullHeight, 150)
+    self.ListFrame.CanvasSize = UDim2.new(0, 0, 0, fullHeight)
 end
 
 function Dropdown:Open()
     if self.IsOpen then return end
     self.IsOpen = true
-
     self.ListFrame:TweenSize(UDim2.new(1, 0, 0, self.FullHeight), "Out", "Quad", 0.2, true)
 end
 
 function Dropdown:Close()
     if not self.IsOpen then return end
     self.IsOpen = false
-
     self.ListFrame:TweenSize(UDim2.new(1, 0, 0, 0), "Out", "Quad", 0.2, true)
 end
 
