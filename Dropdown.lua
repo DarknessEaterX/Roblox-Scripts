@@ -4,10 +4,10 @@ RayfieldDropdown.__index = RayfieldDropdown
 local openDropdown
 local DROPDOWN_HEIGHT = 46
 local DROPDOWN_WIDTH = 260
-local DROPDOWN_SPACING = 16
-local DROPDOWN_STACK_OFFSET = 60 -- Each next dropdown moves down by this many px
+local DROPDOWN_STACK_OFFSET = 60
 
 local dropdownCount = 0
+local dropdowns = {}
 
 local function SafeCallback(callback, ...)
     if type(callback) == "function" then
@@ -34,15 +34,24 @@ local function getGui()
     return gui
 end
 
-function RayfieldDropdown.Dropdown(title, options, def, callback)
+local function cloneTable(t)
+    local new = {}
+    for i,v in ipairs(t) do table.insert(new,v) end
+    return new
+end
+
+function RayfieldDropdown.Dropdown(title, options, def, auto_refresh, callback)
     dropdownCount = dropdownCount + 1
     local self = setmetatable({}, RayfieldDropdown)
 
     self.Title = title or "Dropdown"
     self.Options = options or {}
+    self.AutoRefresh = auto_refresh
     self.Callback = callback
-    self.Selected = def or (options and options[1]) or ""
+    self.Selected = def or (self.Options and self.Options[1]) or ""
     self.IsOpen = false
+    self.Destroyed = false
+    self._lastOptions = cloneTable(self.Options)
 
     -- Main frame
     self.Frame = Instance.new("Frame")
@@ -212,11 +221,31 @@ function RayfieldDropdown.Dropdown(title, options, def, callback)
 
     function self:SetOptions(newOptions)
         self.Options = newOptions or {}
+        self._lastOptions = cloneTable(self.Options)
         self:Refresh()
     end
 
     function self:GetSelected()
         return self.Selected
+    end
+
+    -- Optionally auto-refresh options
+    if self.AutoRefresh then
+        self._refreshConn = game:GetService("RunService").RenderStepped:Connect(function()
+            if self.Destroyed then return end
+            local changed = false
+            if #self.Options ~= #self._lastOptions then
+                changed = true
+            else
+                for i,v in ipairs(self.Options) do
+                    if v ~= self._lastOptions[i] then changed = true break end
+                end
+            end
+            if changed then
+                self._lastOptions = cloneTable(self.Options)
+                self:Refresh()
+            end
+        end)
     end
 
     -- Events
@@ -241,17 +270,21 @@ function RayfieldDropdown.Dropdown(title, options, def, callback)
     self:SetSelected(self.Selected)
 
     -- API:
-    return setmetatable({
+    local api = {
         SetSelected = function(_, v) self:SetSelected(v) end,
         GetSelected = function(_) return self:GetSelected() end,
         SetOptions = function(_, opts) self:SetOptions(opts) end,
         Destroy = function(_)
             if self._InputConn then self._InputConn:Disconnect() end
+            if self._refreshConn then self._refreshConn:Disconnect() end
             if self.Frame then self.Frame:Destroy() end
+            self.Destroyed = true
             dropdownCount = dropdownCount - 1
         end,
         Frame = self.Frame, -- for advanced users
-    }, {__index = self})
+    }
+    table.insert(dropdowns, api)
+    return api
 end
 
 return RayfieldDropdown
