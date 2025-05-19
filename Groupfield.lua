@@ -2,177 +2,239 @@
 local GroupFieldUILibrary = {}
 GroupFieldUILibrary.__index = GroupFieldUILibrary
 
--- Default theme
+local HttpService = game:GetService("HttpService")
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+
+-- Default theme with improved color scheme
 local DEFAULT_THEME = {
-    Background = Color3.fromRGB(45, 45, 45),
-    Header = Color3.fromRGB(30, 30, 30),
-    Text = Color3.fromRGB(255, 255, 255),
-    Button = Color3.fromRGB(60, 60, 60),
-    ButtonHover = Color3.fromRGB(80, 80, 80),
-    Accent = Color3.fromRGB(0, 120, 215),
-    Error = Color3.fromRGB(220, 60, 60),
-    Success = Color3.fromRGB(60, 220, 60)
+    Background = Color3.fromRGB(40, 42, 45),
+    Header = Color3.fromRGB(25, 27, 30),
+    Text = Color3.fromRGB(240, 240, 240),
+    Button = Color3.fromRGB(60, 62, 65),
+    ButtonHover = Color3.fromRGB(80, 82, 85),
+    Accent = Color3.fromRGB(0, 162, 255),
+    Error = Color3.fromRGB(255, 85, 85),
+    Success = Color3.fromRGB(85, 255, 85),
+    Warning = Color3.fromRGB(255, 184, 77),
+    Disabled = Color3.fromRGB(100, 100, 100)
 }
 
 function GroupFieldUILibrary.new(groupData, options)
     local self = setmetatable({}, GroupFieldUILibrary)
     
-    -- Configuration
-    self.groupData = groupData or {}
-    self.theme = options and options.theme or DEFAULT_THEME
-    self.title = options and options.title or "Group Field Manager"
-    self.toggleKey = options and options.toggleKey or Enum.KeyCode.F5
-    self.defaultPosition = options and options.defaultPosition or UDim2.new(0.5, 0, 0.5, 0)
-    self.defaultSize = options and options.defaultSize or UDim2.new(0.3, 0, 0.4, 0)
+    -- Validate groupData
+    if type(groupData) ~= "table" then
+        groupData = {}
+        warn("GroupFieldUILibrary: Invalid groupData provided, using empty table")
+    end
     
-    -- State
-    self.isVisible = false
-    self.currentGroup = nil
+    -- Configuration with defaults
+    self.config = {
+        theme = options and options.theme or DEFAULT_THEME,
+        title = options and options.title or "Group Field Manager",
+        toggleKey = options and options.toggleKey or Enum.KeyCode.F5,
+        defaultPosition = options and options.defaultPosition or UDim2.new(0.05, 0, 0.3, 0),
+        defaultSize = options and options.defaultSize or UDim2.new(0.3, 0, 0.4, 0),
+        minSize = options and options.minSize or UDim2.new(0.2, 150, 0.2, 150),
+        maxSize = options and options.maxSize or UDim2.new(0.8, 0, 0.8, 0),
+        autoRefreshInterval = options and options.autoRefreshInterval or 5,
+        enableSearch = options and options.enableSearch ~= false,
+        enableSorting = options and options.enableSorting ~= false,
+        enableMultiSelect = options and options.enableMultiSelect or false,
+        enablePropertyEditing = options and options.enablePropertyEditing or false
+    }
     
-    -- Create UI
+    -- State management
+    self.state = {
+        isVisible = false,
+        currentGroup = nil,
+        selectedItems = {},
+        isDragging = false,
+        dragStartPos = nil,
+        originalSize = self.config.defaultSize,
+        originalPosition = self.config.defaultPosition
+    }
+    
+    -- Reference to group data
+    self.groupData = groupData
+    
+    -- Create UI elements
     self:createUI()
     
-    -- Set up controls
-    self:setupControls()
+    -- Set up event handlers
+    self:setupEventHandlers()
+    
+    -- Initialize auto-refresh if enabled
+    if self.config.autoRefreshInterval > 0 then
+        self:startAutoRefresh()
+    end
     
     return self
 end
 
+-- Improved UI creation with better organization
 function GroupFieldUILibrary:createUI()
-    -- Create main GUI
+    -- Main ScreenGui
     self.screenGui = Instance.new("ScreenGui")
     self.screenGui.Name = "GroupFieldUILibrary"
     self.screenGui.ResetOnSpawn = false
     self.screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    self.screenGui.Parent = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
+    self.screenGui.DisplayOrder = 10
+    self.screenGui.Parent = Players.LocalPlayer:WaitForChild("PlayerGui")
     
-    -- Main frame
-    self.mainFrame = Instance.new("Frame")
-    self.mainFrame.Name = "MainFrame"
-    self.mainFrame.Size = self.defaultSize
-    self.mainFrame.Position = self.defaultPosition
-    self.mainFrame.BackgroundColor3 = self.theme.Background
-    self.mainFrame.BorderSizePixel = 0
-    self.mainFrame.ClipsDescendants = true
-    self.mainFrame.Visible = false
+    -- Main container frame
+    self.mainFrame = self:createFrame("MainFrame", {
+        Size = self.config.defaultSize,
+        Position = self.config.defaultPosition,
+        BackgroundColor3 = self.config.theme.Background,
+        ClipsDescendants = true,
+        Visible = self.state.isVisible
+    })
     
-    -- Corner rounding
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 8)
-    corner.Parent = self.mainFrame
+    -- Add rounded corners and shadow
+    self:addUICorner(self.mainFrame, 8)
+    self:addUIStroke(self.mainFrame, 2, Color3.fromRGB(80, 80, 80))
     
-    -- Drop shadow
-    local stroke = Instance.new("UIStroke")
-    stroke.Thickness = 2
-    stroke.Color = Color3.fromRGB(80, 80, 80)
-    stroke.Parent = self.mainFrame
+    -- Title bar with improved layout
+    self.titleBar = self:createFrame("TitleBar", {
+        Size = UDim2.new(1, 0, 0.08, 0),
+        BackgroundColor3 = self.config.theme.Header
+    })
     
-    -- Title bar
-    self.titleBar = Instance.new("Frame")
-    self.titleBar.Name = "TitleBar"
-    self.titleBar.Size = UDim2.new(1, 0, 0.08, 0)
-    self.titleBar.BackgroundColor3 = self.theme.Header
-    self.titleBar.BorderSizePixel = 0
+    self.titleLabel = self:createLabel("TitleLabel", {
+        Size = UDim2.new(0.7, 0, 1, 0),
+        Position = UDim2.new(0.15, 0, 0, 0),
+        Text = self.config.title,
+        TextColor3 = self.config.theme.Text,
+        Font = Enum.Font.GothamBold,
+        TextSize = 16
+    })
     
-    self.titleLabel = Instance.new("TextLabel")
-    self.titleLabel.Name = "TitleLabel"
-    self.titleLabel.Size = UDim2.new(0.7, 0, 1, 0)
-    self.titleLabel.Position = UDim2.new(0.15, 0, 0, 0)
-    self.titleLabel.BackgroundTransparency = 1
-    self.titleLabel.Text = self.title
-    self.titleLabel.TextColor3 = self.theme.Text
-    self.titleLabel.Font = Enum.Font.GothamBold
-    self.titleLabel.TextSize = 16
+    -- Improved close button with icon
+    self.closeButton = self:createButton("CloseButton", {
+        Size = UDim2.new(0.1, 0, 1, 0),
+        Position = UDim2.new(0.9, 0, 0, 0),
+        BackgroundColor3 = self.config.theme.Error,
+        Text = "×", -- Using multiplication symbol for better appearance
+        TextColor3 = self.config.theme.Text,
+        Font = Enum.Font.GothamBold,
+        TextSize = 18
+    })
     
-    -- Close button
-    self.closeButton = Instance.new("TextButton")
-    self.closeButton.Name = "CloseButton"
-    self.closeButton.Size = UDim2.new(0.1, 0, 1, 0)
-    self.closeButton.Position = UDim2.new(0.9, 0, 0, 0)
-    self.closeButton.BackgroundColor3 = self.theme.Error
-    self.closeButton.Text = "X"
-    self.closeButton.TextColor3 = self.theme.Text
-    self.closeButton.Font = Enum.Font.GothamBold
+    -- Mobile toggle button
+    self.toggleButton = self:createButton("ToggleButton", {
+        Size = UDim2.new(0.15, 0, 0.06, 0),
+        Position = UDim2.new(0.02, 0, 0.92, 0),
+        BackgroundColor3 = self.config.theme.Button,
+        Text = "Toggle GUI",
+        TextColor3 = self.config.theme.Text,
+        Font = Enum.Font.Gotham,
+        TextSize = 14,
+        Visible = false
+    })
     
-    -- Toggle button (for mobile)
-    self.toggleButton = Instance.new("TextButton")
-    self.toggleButton.Name = "ToggleButton"
-    self.toggleButton.Size = UDim2.new(0.15, 0, 0.06, 0)
-    self.toggleButton.Position = UDim2.new(0.02, 0, 0.92, 0)
-    self.toggleButton.BackgroundColor3 = self.theme.Button
-    self.toggleButton.Text = "Toggle GUI"
-    self.toggleButton.TextColor3 = self.theme.Text
-    self.toggleButton.Font = Enum.Font.Gotham
-    self.toggleButton.TextSize = 14
-    self.toggleButton.Visible = false
+    -- Content area
+    self.contentFrame = self:createFrame("ContentFrame", {
+        Size = UDim2.new(1, 0, 0.92, 0),
+        Position = UDim2.new(0, 0, 0.08, 0),
+        BackgroundTransparency = 1
+    })
     
-    -- Content frame
-    self.contentFrame = Instance.new("Frame")
-    self.contentFrame.Name = "ContentFrame"
-    self.contentFrame.Size = UDim2.new(1, 0, 0.92, 0)
-    self.contentFrame.Position = UDim2.new(0, 0, 0.08, 0)
-    self.contentFrame.BackgroundTransparency = 1
+    -- Groups panel with search functionality
+    self.groupsPanel = self:createFrame("GroupsPanel", {
+        Size = UDim2.new(0.3, 0, 1, 0),
+        BackgroundTransparency = 1
+    })
     
-    -- Groups list
-    self.groupsList = Instance.new("ScrollingFrame")
-    self.groupsList.Name = "GroupsList"
-    self.groupsList.Size = UDim2.new(0.3, 0, 1, 0)
-    self.groupsList.BackgroundTransparency = 1
-    self.groupsList.ScrollBarThickness = 4
+    if self.config.enableSearch then
+        self.groupSearchBox = self:createTextBox("GroupSearchBox", {
+            Size = UDim2.new(0.9, 0, 0.08, 0),
+            Position = UDim2.new(0.05, 0, 0, 0),
+            PlaceholderText = "Search groups...",
+            ClearTextOnFocus = false
+        })
+    end
     
-    self.groupsListLayout = Instance.new("UIListLayout")
-    self.groupsListLayout.Padding = UDim.new(0, 5)
-    self.groupsListLayout.Parent = self.groupsList
+    self.groupsList = self:createScrollingFrame("GroupsList", {
+        Size = UDim2.new(0.9, 0, self.config.enableSearch and 0.9 or 1, 0),
+        Position = UDim2.new(0.05, 0, self.config.enableSearch and 0.1 or 0, 0),
+        ScrollBarThickness = 6
+    })
     
-    -- Group details
-    self.groupDetails = Instance.new("Frame")
-    self.groupDetails.Name = "GroupDetails"
-    self.groupDetails.Size = UDim2.new(0.7, 0, 1, 0)
-    self.groupDetails.Position = UDim2.new(0.3, 0, 0, 0)
-    self.groupDetails.BackgroundTransparency = 1
+    -- Group details panel
+    self.detailsPanel = self:createFrame("DetailsPanel", {
+        Size = UDim2.new(0.7, 0, 1, 0),
+        Position = UDim2.new(0.3, 0, 0, 0),
+        BackgroundTransparency = 1
+    })
     
-    self.membersList = Instance.new("ScrollingFrame")
-    self.membersList.Name = "MembersList"
-    self.membersList.Size = UDim2.new(1, 0, 0.8, 0)
-    self.membersList.BackgroundTransparency = 1
-    self.membersList.ScrollBarThickness = 4
+    self.membersHeader = self:createLabel("MembersHeader", {
+        Size = UDim2.new(1, 0, 0.05, 0),
+        Text = "Group Members",
+        TextColor3 = self.config.theme.Text,
+        Font = Enum.Font.GothamBold
+    })
     
-    self.membersListLayout = Instance.new("UIListLayout")
-    self.membersListLayout.Padding = UDim.new(0, 5)
-    self.membersListLayout.Parent = self.membersList
+    if self.config.enableSearch then
+        self.memberSearchBox = self:createTextBox("MemberSearchBox", {
+            Size = UDim2.new(0.9, 0, 0.08, 0),
+            Position = UDim2.new(0.05, 0, 0.05, 0),
+            PlaceholderText = "Search members...",
+            ClearTextOnFocus = false
+        })
+    end
     
-    self.groupActions = Instance.new("Frame")
-    self.groupActions.Name = "GroupActions"
-    self.groupActions.Size = UDim2.new(1, 0, 0.2, 0)
-    self.groupActions.Position = UDim2.new(0, 0, 0.8, 0)
-    self.groupActions.BackgroundTransparency = 1
+    self.membersList = self:createScrollingFrame("MembersList", {
+        Size = UDim2.new(0.9, 0, self.config.enableSearch and 0.75 or 0.8, 0),
+        Position = UDim2.new(0.05, 0, self.config.enableSearch and 0.14 or 0.05, 0),
+        ScrollBarThickness = 6
+    })
     
-    self.addButton = Instance.new("TextButton")
-    self.addButton.Name = "AddButton"
-    self.addButton.Size = UDim2.new(0.3, 0, 0.4, 0)
-    self.addButton.Position = UDim2.new(0.05, 0, 0.3, 0)
-    self.addButton.BackgroundColor3 = self.theme.Success
-    self.addButton.Text = "Add Item"
-    self.addButton.TextColor3 = self.theme.Text
-    self.addButton.Font = Enum.Font.Gotham
+    -- Action buttons with improved layout
+    self.actionButtons = self:createFrame("ActionButtons", {
+        Size = UDim2.new(0.9, 0, 0.15, 0),
+        Position = UDim2.new(0.05, 0, 0.85, 0),
+        BackgroundTransparency = 1
+    })
     
-    self.removeButton = Instance.new("TextButton")
-    self.removeButton.Name = "RemoveButton"
-    self.removeButton.Size = UDim2.new(0.3, 0, 0.4, 0)
-    self.removeButton.Position = UDim2.new(0.4, 0, 0.3, 0)
-    self.removeButton.BackgroundColor3 = self.theme.Error
-    self.removeButton.Text = "Remove Item"
-    self.removeButton.TextColor3 = self.theme.Text
-    self.removeButton.Font = Enum.Font.Gotham
+    self.newGroupButton = self:createButton("NewGroupButton", {
+        Size = UDim2.new(0.3, 0, 0.8, 0),
+        Position = UDim2.new(0, 0, 0.1, 0),
+        BackgroundColor3 = self.config.theme.Accent,
+        Text = "New Group",
+        TextColor3 = self.config.theme.Text,
+        Font = Enum.Font.Gotham
+    })
     
-    self.newGroupButton = Instance.new("TextButton")
-    self.newGroupButton.Name = "NewGroupButton"
-    self.newGroupButton.Size = UDim2.new(0.3, 0, 0.4, 0)
-    self.newGroupButton.Position = UDim2.new(0.75, 0, 0.3, 0)
-    self.newGroupButton.BackgroundColor3 = self.theme.Accent
-    self.newGroupButton.Text = "New Group"
-    self.newGroupButton.TextColor3 = self.theme.Text
-    self.newGroupButton.Font = Enum.Font.Gotham
+    self.addButton = self:createButton("AddButton", {
+        Size = UDim2.new(0.3, 0, 0.8, 0),
+        Position = UDim2.new(0.35, 0, 0.1, 0),
+        BackgroundColor3 = self.config.theme.Success,
+        Text = "Add Item",
+        TextColor3 = self.config.theme.Text,
+        Font = Enum.Font.Gotham
+    })
+    
+    self.removeButton = self:createButton("RemoveButton", {
+        Size = UDim2.new(0.3, 0, 0.8, 0),
+        Position = UDim2.new(0.7, 0, 0.1, 0),
+        BackgroundColor3 = self.config.theme.Error,
+        Text = "Remove",
+        TextColor3 = self.config.theme.Text,
+        Font = Enum.Font.Gotham
+    })
+    
+    -- Add resize handle
+    self.resizeHandle = self:createButton("ResizeHandle", {
+        Size = UDim2.new(0.05, 0, 0.05, 0),
+        Position = UDim2.new(0.95, 0, 0.95, 0),
+        BackgroundColor3 = self.config.theme.Button,
+        Text = "↘",
+        TextColor3 = self.config.theme.Text,
+        Font = Enum.Font.GothamBold,
+        TextSize = 12
+    })
     
     -- Add UIAspectRatioConstraint for mobile
     self.aspectRatioConstraint = Instance.new("UIAspectRatioConstraint")
@@ -181,80 +243,135 @@ function GroupFieldUILibrary:createUI()
     self.aspectRatioConstraint.Parent = self.mainFrame
     
     -- Parent all elements
-    self.groupActions.Parent = self.groupDetails
-    self.addButton.Parent = self.groupActions
-    self.removeButton.Parent = self.groupActions
-    self.newGroupButton.Parent = self.groupActions
-    self.membersList.Parent = self.groupDetails
-    self.groupDetails.Parent = self.contentFrame
-    self.groupsList.Parent = self.contentFrame
-    self.contentFrame.Parent = self.mainFrame
-    self.titleBar.Parent = self.mainFrame
     self.titleLabel.Parent = self.titleBar
     self.closeButton.Parent = self.titleBar
+    self.titleBar.Parent = self.mainFrame
+    
+    if self.config.enableSearch then
+        self.groupSearchBox.Parent = self.groupsPanel
+    end
+    self.groupsList.Parent = self.groupsPanel
+    self.groupsPanel.Parent = self.contentFrame
+    
+    self.membersHeader.Parent = self.detailsPanel
+    if self.config.enableSearch then
+        self.memberSearchBox.Parent = self.detailsPanel
+    end
+    self.membersList.Parent = self.detailsPanel
+    self.actionButtons.Parent = self.detailsPanel
+    self.detailsPanel.Parent = self.contentFrame
+    
+    self.newGroupButton.Parent = self.actionButtons
+    self.addButton.Parent = self.actionButtons
+    self.removeButton.Parent = self.actionButtons
+    
+    self.contentFrame.Parent = self.mainFrame
+    self.resizeHandle.Parent = self.mainFrame
     self.toggleButton.Parent = self.screenGui
     self.mainFrame.Parent = self.screenGui
     
     -- Set up button hover effects
-    self:setupButtonHoverEffects()
-end
-
-function GroupFieldUILibrary:setupButtonHoverEffects()
-    local buttons = {
-        self.closeButton,
-        self.toggleButton,
-        self.addButton,
-        self.removeButton,
-        self.newGroupButton
-    }
+    self:setupHoverEffects()
     
-    for _, button in ipairs(buttons) do
-        button.MouseEnter:Connect(function()
-            button.BackgroundColor3 = self.theme.ButtonHover
-        end)
-        
-        button.MouseLeave:Connect(function()
-            if button == self.closeButton then
-                button.BackgroundColor3 = self.theme.Error
-            elseif button == self.addButton then
-                button.BackgroundColor3 = self.theme.Success
-            elseif button == self.removeButton then
-                button.BackgroundColor3 = self.theme.Error
-            elseif button == self.newGroupButton then
-                button.BackgroundColor3 = self.theme.Accent
-            else
-                button.BackgroundColor3 = self.theme.Button
-            end
-        end)
+    -- Initialize search functionality if enabled
+    if self.config.enableSearch then
+        self:setupSearchFunctionality()
     end
 end
 
-function GroupFieldUILibrary:setupControls()
-    local UserInputService = game:GetService("UserInputService")
-    
-    -- Make the GUI draggable
-    local dragging
-    local dragInput
-    local dragStart
-    local startPos
-    
-    local function updateInput(input)
-        local delta = input.Position - dragStart
-        self.mainFrame.Position = UDim2.new(
-            startPos.X.Scale, startPos.X.Offset + delta.X,
-            startPos.Y.Scale, startPos.Y.Offset + delta.Y
-        )
+-- Improved helper functions for UI creation
+function GroupFieldUILibrary:createFrame(name, properties)
+    local frame = Instance.new("Frame")
+    frame.Name = name
+    for prop, value in pairs(properties) do
+        frame[prop] = value
+    end
+    return frame
+end
+
+function GroupFieldUILibrary:createLabel(name, properties)
+    local label = Instance.new("TextLabel")
+    label.Name = name
+    label.BackgroundTransparency = 1
+    for prop, value in pairs(properties) do
+        label[prop] = value
+    end
+    return label
+end
+
+function GroupFieldUILibrary:createButton(name, properties)
+    local button = Instance.new("TextButton")
+    button.Name = name
+    button.AutoButtonColor = true
+    button.BorderSizePixel = 0
+    for prop, value in pairs(properties) do
+        button[prop] = value
     end
     
+    -- Add corner rounding
+    self:addUICorner(button, 4)
+    
+    return button
+end
+
+function GroupFieldUILibrary:createTextBox(name, properties)
+    local textBox = Instance.new("TextBox")
+    textBox.Name = name
+    textBox.BackgroundColor3 = self.config.theme.Button
+    textBox.TextColor3 = self.config.theme.Text
+    textBox.Font = Enum.Font.Gotham
+    textBox.ClearTextOnFocus = false
+    for prop, value in pairs(properties) do
+        textBox[prop] = value
+    end
+    
+    -- Add corner rounding
+    self:addUICorner(textBox, 4)
+    
+    return textBox
+end
+
+function GroupFieldUILibrary:createScrollingFrame(name, properties)
+    local frame = Instance.new("ScrollingFrame")
+    frame.Name = name
+    frame.BackgroundTransparency = 1
+    frame.ScrollBarImageColor3 = self.config.theme.ButtonHover
+    for prop, value in pairs(properties) do
+        frame[prop] = value
+    end
+    
+    local layout = Instance.new("UIListLayout")
+    layout.Padding = UDim.new(0, 5)
+    layout.Parent = frame
+    
+    return frame
+end
+
+function GroupFieldUILibrary:addUICorner(instance, cornerRadius)
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, cornerRadius or 4)
+    corner.Parent = instance
+end
+
+function GroupFieldUILibrary:addUIStroke(instance, thickness, color)
+    local stroke = Instance.new("UIStroke")
+    stroke.Thickness = thickness or 1
+    stroke.Color = color or Color3.fromRGB(80, 80, 80)
+    stroke.Parent = instance
+end
+
+-- Improved event handling setup
+function GroupFieldUILibrary:setupEventHandlers()
+    -- Dragging functionality
     self.titleBar.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            dragging = true
-            dragStart = input.Position
-            startPos = self.mainFrame.Position
+            self.state.isDragging = true
+            self.state.dragStartPos = input.Position
+            self.state.originalPosition = self.mainFrame.Position
             
             input.Changed:Connect(function()
                 if input.UserInputState == Enum.UserInputState.End then
-                    dragging = false
+                    self.state.isDragging = false
                 end
             end)
         end
@@ -262,13 +379,63 @@ function GroupFieldUILibrary:setupControls()
     
     self.titleBar.InputChanged:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-            dragInput = input
+            self.state.dragInput = input
         end
     end)
     
     UserInputService.InputChanged:Connect(function(input)
-        if input == dragInput and dragging then
-            updateInput(input)
+        if self.state.isDragging and input == self.state.dragInput then
+            local delta = input.Position - self.state.dragStartPos
+            self.mainFrame.Position = UDim2.new(
+                self.state.originalPosition.X.Scale, 
+                self.state.originalPosition.X.Offset + delta.X,
+                self.state.originalPosition.Y.Scale, 
+                self.state.originalPosition.Y.Offset + delta.Y
+            )
+        end
+    end)
+    
+    -- Resize functionality
+    self.resizeHandle.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            self.state.isResizing = true
+            self.state.resizeStartPos = input.Position
+            self.state.originalSize = self.mainFrame.Size
+            
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    self.state.isResizing = false
+                end
+            end)
+        end
+    end)
+    
+    self.resizeHandle.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+            self.state.resizeInput = input
+        end
+    end)
+    
+    UserInputService.InputChanged:Connect(function(input)
+        if self.state.isResizing and input == self.state.resizeInput then
+            local delta = input.Position - self.state.resizeStartPos
+            local newWidth = math.clamp(
+                self.state.originalSize.X.Offset + delta.X,
+                self.config.minSize.X.Offset,
+                self.config.maxSize.X.Offset
+            )
+            local newHeight = math.clamp(
+                self.state.originalSize.Y.Offset + delta.Y,
+                self.config.minSize.Y.Offset,
+                self.config.maxSize.Y.Offset
+            )
+            
+            self.mainFrame.Size = UDim2.new(
+                self.state.originalSize.X.Scale,
+                newWidth,
+                self.state.originalSize.Y.Scale,
+                newHeight
+            )
         end
     end)
     
@@ -283,7 +450,7 @@ function GroupFieldUILibrary:setupControls()
     
     -- Keyboard toggle
     UserInputService.InputBegan:Connect(function(input, processed)
-        if not processed and input.KeyCode == self.toggleKey then
+        if not processed and input.KeyCode == self.config.toggleKey then
             self:toggle()
         end
     end)
@@ -302,381 +469,1039 @@ function GroupFieldUILibrary:setupControls()
     end)
     
     self.addButton.MouseButton1Click:Connect(function()
-        if self.currentGroup then
-            self:showAddItemDialog(self.currentGroup)
+        if self.state.currentGroup then
+            self:showAddItemDialog(self.state.currentGroup)
+        else
+            self:showNotification("Please select a group first", self.config.theme.Warning)
         end
     end)
     
     self.removeButton.MouseButton1Click:Connect(function()
-        if self.currentGroup then
-            self:showRemoveItemDialog(self.currentGroup)
+        if self.state.currentGroup then
+            if self.config.enableMultiSelect and next(self.state.selectedItems) then
+                self:showMultiRemoveConfirmation()
+            else
+                self:showRemoveItemDialog(self.state.currentGroup)
+            end
+        else
+            self:showNotification("Please select a group first", self.config.theme.Warning)
         end
     end)
-    
-    -- Initial refresh
-    self:refreshGroups()
 end
 
+-- Improved hover effects with animation
+function GroupFieldUILibrary:setupHoverEffects()
+    local buttons = {
+        self.closeButton,
+        self.toggleButton,
+        self.addButton,
+        self.removeButton,
+        self.newGroupButton,
+        self.resizeHandle
+    }
+    
+    for _, button in ipairs(buttons) do
+        button.MouseEnter:Connect(function()
+            if button == self.closeButton then
+                button.BackgroundColor3 = Color3.fromRGB(255, 120, 120)
+            elseif button == self.addButton then
+                button.BackgroundColor3 = Color3.fromRGB(120, 255, 120)
+            elseif button == self.removeButton then
+                button.BackgroundColor3 = Color3.fromRGB(255, 120, 120)
+            elseif button == self.newGroupButton then
+                button.BackgroundColor3 = Color3.fromRGB(50, 180, 255)
+            else
+                button.BackgroundColor3 = self.config.theme.ButtonHover
+            end
+        end)
+        
+        button.MouseLeave:Connect(function()
+            if button == self.closeButton then
+                button.BackgroundColor3 = self.config.theme.Error
+            elseif button == self.addButton then
+                button.BackgroundColor3 = self.config.theme.Success
+            elseif button == self.removeButton then
+                button.BackgroundColor3 = self.config.theme.Error
+            elseif button == self.newGroupButton then
+                button.BackgroundColor3 = self.config.theme.Accent
+            else
+                button.BackgroundColor3 = self.config.theme.Button
+            end
+        end)
+    end
+end
+
+-- Improved search functionality
+function GroupFieldUILibrary:setupSearchFunctionality()
+    self.groupSearchBox:GetPropertyChangedSignal("Text"):Connect(function()
+        self:filterGroups(self.groupSearchBox.Text)
+    end)
+    
+    self.memberSearchBox:GetPropertyChangedSignal("Text"):Connect(function()
+        if self.state.currentGroup then
+            self:filterMembers(self.state.currentGroup, self.memberSearchBox.Text)
+        end
+    end)
+end
+
+-- Improved group creation with validation
 function GroupFieldUILibrary:createGroupButton(groupName)
-    local button = Instance.new("TextButton")
-    button.Name = groupName
-    button.Size = UDim2.new(0.9, 0, 0, 30)
-    button.Position = UDim2.new(0.05, 0, 0, 0)
-    button.BackgroundColor3 = self.theme.Button
-    button.Text = groupName
-    button.TextColor3 = self.theme.Text
-    button.Font = Enum.Font.Gotham
+    local button = self:createButton(groupName, {
+        Size = UDim2.new(0.9, 0, 0, 35),
+        Position = UDim2.new(0.05, 0, 0, 0),
+        Text = groupName,
+        TextColor3 = self.config.theme.Text,
+        Font = Enum.Font.Gotham,
+        TextSize = 14
+    })
+    
+    -- Add group count badge
+    local memberCount = self:countGroupMembers(groupName)
+    local countBadge = self:createLabel("CountBadge", {
+        Size = UDim2.new(0.2, 0, 0.6, 0),
+        Position = UDim2.new(0.75, 0, 0.2, 0),
+        BackgroundColor3 = self.config.theme.Accent,
+        Text = tostring(memberCount),
+        TextColor3 = self.config.theme.Text,
+        Font = Enum.Font.GothamBold,
+        TextSize = 12
+    })
+    self:addUICorner(countBadge, 8)
+    countBadge.Parent = button
     
     button.MouseButton1Click:Connect(function()
         -- Clear previous selection
         for _, child in ipairs(self.groupsList:GetChildren()) do
             if child:IsA("TextButton") then
-                child.BackgroundColor3 = self.theme.Button
+                child.BackgroundColor3 = self.config.theme.Button
+                child:FindFirstChild("CountBadge").BackgroundColor3 = self.config.theme.Accent
             end
         end
         
         -- Highlight selected
-        button.BackgroundColor3 = self.theme.Accent
-        self.currentGroup = groupName
+        button.BackgroundColor3 = self.config.theme.Accent
+        countBadge.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+        countBadge.TextColor3 = self.config.theme.Accent
         
-        -- Show group details
+        self.state.currentGroup = groupName
+        self.state.selectedItems = {} -- Clear selection when changing groups
         self:refreshMembersList(groupName)
     end)
     
     return button
 end
 
-function GroupFieldUILibrary:refreshGroups()
-    self.groupsList:ClearAllChildren()
+-- Improved group filtering
+function GroupFieldUILibrary:filterGroups(searchText)
+    searchText = string.lower(searchText or "")
     
-    for groupName, _ in pairs(self.groupData) do
-        self:createGroupButton(groupName).Parent = self.groupsList
-    end
-end
-
-function GroupFieldUILibrary:refreshMembersList(groupName)
-    self.membersList:ClearAllChildren()
-    
-    local members = self.groupData[groupName]
-    if members then
-        for member, properties in pairs(members) do
-            local memberFrame = Instance.new("Frame")
-            memberFrame.Size = UDim2.new(0.9, 0, 0, 40)
-            memberFrame.Position = UDim2.new(0.05, 0, 0, 0)
-            memberFrame.BackgroundColor3 = self.theme.Button
-            memberFrame.BorderSizePixel = 0
-            
-            local corner = Instance.new("UICorner")
-            corner.CornerRadius = UDim.new(0, 4)
-            corner.Parent = memberFrame
-            
-            local nameLabel = Instance.new("TextLabel")
-            nameLabel.Size = UDim2.new(0.6, 0, 0.5, 0)
-            nameLabel.Position = UDim2.new(0.05, 0, 0, 0)
-            nameLabel.BackgroundTransparency = 1
-            nameLabel.Text = tostring(member)
-            nameLabel.TextColor3 = self.theme.Text
-            nameLabel.Font = Enum.Font.Gotham
-            nameLabel.TextXAlignment = Enum.TextXAlignment.Left
-            
-            local propsLabel = Instance.new("TextLabel")
-            propsLabel.Size = UDim2.new(0.9, 0, 0.5, 0)
-            propsLabel.Position = UDim2.new(0.05, 0, 0.5, 0)
-            propsLabel.BackgroundTransparency = 1
-            propsLabel.Text = "Properties: " .. self:propertiesToString(properties)
-            propsLabel.TextColor3 = self.theme.Text
-            propsLabel.Font = Enum.Font.Gotham
-            propsLabel.TextXAlignment = Enum.TextXAlignment.Left
-            propsLabel.TextSize = 12
-            
-            nameLabel.Parent = memberFrame
-            propsLabel.Parent = memberFrame
-            memberFrame.Parent = self.membersList
+    for _, child in ipairs(self.groupsList:GetChildren()) do
+        if child:IsA("TextButton") then
+            local groupName = string.lower(child.Text)
+            child.Visible = searchText == "" or string.find(groupName, searchText, 1, true) ~= nil
         end
     end
 end
 
+-- Improved member filtering
+function GroupFieldUILibrary:filterMembers(groupName, searchText)
+    searchText = string.lower(searchText or "")
+    
+    for _, child in ipairs(self.membersList:GetChildren()) do
+        if child:IsA("Frame") then
+            local memberName = string.lower(child.NameLabel.Text)
+            child.Visible = searchText == "" or string.find(memberName, searchText, 1, true) ~= nil
+        end
+    end
+end
+
+-- Improved member list item creation
+function GroupFieldUILibrary:createMemberListItem(member, properties)
+    local memberFrame = self:createFrame(member, {
+        Size = UDim2.new(0.9, 0, 0, 50),
+        Position = UDim2.new(0.05, 0, 0, 0),
+        BackgroundColor3 = self.config.theme.Button,
+        BorderSizePixel = 0
+    })
+    
+    self:addUICorner(memberFrame, 6)
+    
+    local nameLabel = self:createLabel("NameLabel", {
+        Size = UDim2.new(0.6, 0, 0.5, 0),
+        Position = UDim2.new(0.05, 0, 0, 0),
+        Text = tostring(member),
+        TextColor3 = self.config.theme.Text,
+        Font = Enum.Font.Gotham,
+        TextXAlignment = Enum.TextXAlignment.Left
+    })
+    
+    local propsLabel = self:createLabel("PropsLabel", {
+        Size = UDim2.new(0.9, 0, 0.5, 0),
+        Position = UDim2.new(0.05, 0, 0.5, 0),
+        Text = "Properties: " .. self:propertiesToString(properties),
+        TextColor3 = self.config.theme.Text,
+        Font = Enum.Font.Gotham,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        TextSize = 12
+    })
+    
+    -- Selection indicator
+    local selectionIndicator = self:createFrame("SelectionIndicator", {
+        Size = UDim2.new(0.02, 0, 0.8, 0),
+        Position = UDim2.new(0.01, 0, 0.1, 0),
+        BackgroundColor3 = self.config.theme.Accent,
+        Visible = false
+    })
+    self:addUICorner(selectionIndicator, 2)
+    
+    -- Edit button if property editing is enabled
+    if self.config.enablePropertyEditing then
+        local editButton = self:createButton("EditButton", {
+            Size = UDim2.new(0.15, 0, 0.6, 0),
+            Position = UDim2.new(0.8, 0, 0.2, 0),
+            BackgroundColor3 = self.config.theme.Accent,
+            Text = "Edit",
+            TextColor3 = self.config.theme.Text,
+            Font = Enum.Font.Gotham,
+            TextSize = 12
+        })
+        
+        editButton.MouseButton1Click:Connect(function()
+            self:showEditPropertiesDialog(self.state.currentGroup, member, properties)
+        end)
+        
+        editButton.Parent = memberFrame
+    end
+    
+    -- Multi-select functionality
+    if self.config.enableMultiSelect then
+        memberFrame.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                local isSelected = not self.state.selectedItems[member]
+                self.state.selectedItems[member] = isSelected or nil
+                selectionIndicator.Visible = isSelected
+                
+                if isSelected then
+                    memberFrame.BackgroundColor3 = Color3.fromRGB(
+                        math.floor(self.config.theme.Button.R * 255 * 0.8),
+                        math.floor(self.config.theme.Button.G * 255 * 0.8),
+                        math.floor(self.config.theme.Button.B * 255 * 0.8)
+                    )
+                else
+                    memberFrame.BackgroundColor3 = self.config.theme.Button
+                end
+            end
+        end)
+    end
+    
+    nameLabel.Parent = memberFrame
+    propsLabel.Parent = memberFrame
+    selectionIndicator.Parent = memberFrame
+    
+    return memberFrame
+end
+
+-- Improved group refresh with sorting
+function GroupFieldUILibrary:refreshGroups()
+    self.groupsList:ClearAllChildren()
+    
+    local groupNames = {}
+    for groupName, _ in pairs(self.groupData) do
+        table.insert(groupNames, groupName)
+    end
+    
+    -- Sort groups if enabled
+    if self.config.enableSorting then
+        table.sort(groupNames, function(a, b)
+            return string.lower(a) < string.lower(b)
+        end)
+    end
+    
+    for _, groupName in ipairs(groupNames) do
+        self:createGroupButton(groupName).Parent = self.groupsList
+    end
+end
+
+-- Improved member list refresh with sorting
+function GroupFieldUILibrary:refreshMembersList(groupName)
+    self.membersList:ClearAllChildren()
+    self.state.selectedItems = {} -- Clear selection
+    
+    local members = {}
+    for member, properties in pairs(self.groupData[groupName] or {}) do
+        table.insert(members, {member = member, properties = properties})
+    end
+    
+    -- Sort members if enabled
+    if self.config.enableSorting then
+        table.sort(members, function(a, b)
+            return string.lower(tostring(a.member)) < string.lower(tostring(b.member))
+        end)
+    end
+    
+    for _, data in ipairs(members) do
+        self:createMemberListItem(data.member, data.properties).Parent = self.membersList
+    end
+end
+
+-- Improved property string conversion
 function GroupFieldUILibrary:propertiesToString(properties)
-    if not properties then return "None" end
+    if not properties or next(properties) == nil then
+        return "None"
+    end
     
     local parts = {}
     for k, v in pairs(properties) do
-        table.insert(parts, tostring(k) .. "=" .. tostring(v))
+        if type(v) == "table" then
+            table.insert(parts, string.format("%s={...}", tostring(k)))
+        else
+            table.insert(parts, string.format("%s=%s", tostring(k), tostring(v)))
+        end
     end
     
     return table.concat(parts, ", ")
 end
 
+-- Improved notification system
+function GroupFieldUILibrary:showNotification(message, color)
+    local notification = self:createFrame("Notification", {
+        Size = UDim2.new(0.8, 0, 0.1, 0),
+        Position = UDim2.new(0.1, 0, 0.8, 0),
+        BackgroundColor3 = color or self.config.theme.Accent,
+        ZIndex = 20
+    })
+    
+    self:addUICorner(notification, 6)
+    self:addUIStroke(notification, 2, Color3.fromRGB(0, 0, 0))
+    
+    local label = self:createLabel("NotificationLabel", {
+        Size = UDim2.new(0.9, 0, 0.8, 0),
+        Position = UDim2.new(0.05, 0, 0.1, 0),
+        Text = message,
+        TextColor3 = self.config.theme.Text,
+        Font = Enum.Font.GothamBold,
+        TextSize = 14,
+        TextWrapped = true,
+        ZIndex = 21
+    })
+    
+    label.Parent = notification
+    notification.Parent = self.mainFrame
+    
+    -- Animate notification
+    notification.BackgroundTransparency = 1
+    label.TextTransparency = 1
+    
+    local fadeIn = game:GetService("TweenService"):Create(
+        notification,
+        TweenInfo.new(0.3),
+        {BackgroundTransparency = 0}
+    )
+    
+    local textFadeIn = game:GetService("TweenService"):Create(
+        label,
+        TweenInfo.new(0.3),
+        {TextTransparency = 0}
+    )
+    
+    fadeIn:Play()
+    textFadeIn:Play()
+    
+    -- Auto-remove after delay
+    task.delay(3, function()
+        if notification and notification.Parent then
+            local fadeOut = game:GetService("TweenService"):Create(
+                notification,
+                TweenInfo.new(0.5),
+                {BackgroundTransparency = 1}
+            )
+            
+            local textFadeOut = game:GetService("TweenService"):Create(
+                label,
+                TweenInfo.new(0.5),
+                {TextTransparency = 1}
+            )
+            
+            fadeOut:Play()
+            textFadeOut:Play()
+            
+            fadeOut.Completed:Wait()
+            notification:Destroy()
+        end
+    end)
+end
+
+-- Improved dialog management
 function GroupFieldUILibrary:showNewGroupDialog()
-    local dialog = Instance.new("Frame")
-    dialog.Name = "NewGroupDialog"
-    dialog.Size = UDim2.new(0.6, 0, 0.3, 0)
-    dialog.Position = UDim2.new(0.2, 0, 0.35, 0)
-    dialog.BackgroundColor3 = self.theme.Background
-    dialog.BorderSizePixel = 0
+    if self.mainFrame:FindFirstChild("NewGroupDialog") then
+        return
+    end
     
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 8)
-    corner.Parent = dialog
+    local dialog = self:createFrame("NewGroupDialog", {
+        Size = UDim2.new(0.6, 0, 0.3, 0),
+        Position = UDim2.new(0.2, 0, 0.35, 0),
+        BackgroundColor3 = self.config.theme.Background,
+        ZIndex = 10
+    })
     
-    local stroke = Instance.new("UIStroke")
-    stroke.Thickness = 2
-    stroke.Color = Color3.fromRGB(80, 80, 80)
-    stroke.Parent = dialog
+    self:addUICorner(dialog, 8)
+    self:addUIStroke(dialog, 2, Color3.fromRGB(80, 80, 80))
     
-    local title = Instance.new("TextLabel")
-    title.Size = UDim2.new(0.9, 0, 0.3, 0)
-    title.Position = UDim2.new(0.05, 0, 0.05, 0)
-    title.BackgroundTransparency = 1
-    title.Text = "Create New Group"
-    title.TextColor3 = self.theme.Text
-    title.Font = Enum.Font.GothamBold
+    local title = self:createLabel("DialogTitle", {
+        Size = UDim2.new(0.9, 0, 0.3, 0),
+        Position = UDim2.new(0.05, 0, 0.05, 0),
+        Text = "Create New Group",
+        TextColor3 = self.config.theme.Text,
+        Font = Enum.Font.GothamBold,
+        ZIndex = 11
+    })
     
-    local textBox = Instance.new("TextBox")
-    textBox.Size = UDim2.new(0.9, 0, 0.3, 0)
-    textBox.Position = UDim2.new(0.05, 0, 0.4, 0)
-    textBox.BackgroundColor3 = self.theme.Button
-    textBox.TextColor3 = self.theme.Text
-    textBox.PlaceholderText = "Enter group name"
-    textBox.ClearTextOnFocus = false
+    local textBox = self:createTextBox("GroupNameBox", {
+        Size = UDim2.new(0.9, 0, 0.3, 0),
+        Position = UDim2.new(0.05, 0, 0.4, 0),
+        PlaceholderText = "Enter group name",
+        ClearTextOnFocus = false,
+        ZIndex = 11
+    })
     
-    local submitButton = Instance.new("TextButton")
-    submitButton.Size = UDim2.new(0.4, 0, 0.2, 0)
-    submitButton.Position = UDim2.new(0.3, 0, 0.75, 0)
-    submitButton.BackgroundColor3 = self.theme.Success
-    submitButton.Text = "Create"
-    submitButton.TextColor3 = self.theme.Text
-    submitButton.Font = Enum.Font.Gotham
+    local buttonFrame = self:createFrame("ButtonFrame", {
+        Size = UDim2.new(0.9, 0, 0.2, 0),
+        Position = UDim2.new(0.05, 0, 0.75, 0),
+        BackgroundTransparency = 1,
+        ZIndex = 11
+    })
+    
+    local submitButton = self:createButton("SubmitButton", {
+        Size = UDim2.new(0.45, 0, 1, 0),
+        Position = UDim2.new(0, 0, 0, 0),
+        BackgroundColor3 = self.config.theme.Success,
+        Text = "Create",
+        TextColor3 = self.config.theme.Text,
+        Font = Enum.Font.Gotham,
+        ZIndex = 12
+    })
+    
+    local cancelButton = self:createButton("CancelButton", {
+        Size = UDim2.new(0.45, 0, 1, 0),
+        Position = UDim2.new(0.55, 0, 0, 0),
+        BackgroundColor3 = self.config.theme.Error,
+        Text = "Cancel",
+        TextColor3 = self.config.theme.Text,
+        Font = Enum.Font.Gotham,
+        ZIndex = 12
+    })
     
     title.Parent = dialog
     textBox.Parent = dialog
-    submitButton.Parent = dialog
+    buttonFrame.Parent = dialog
+    submitButton.Parent = buttonFrame
+    cancelButton.Parent = buttonFrame
     dialog.Parent = self.mainFrame
     
+    -- Focus text box automatically
+    textBox:CaptureFocus()
+    
+    -- Submit handler
     submitButton.MouseButton1Click:Connect(function()
-        local groupName = textBox.Text
+        local groupName = string.gsub(textBox.Text, "^%s*(.-)%s*$", "%1") -- Trim whitespace
         if groupName and groupName ~= "" then
             if not self.groupData[groupName] then
                 self.groupData[groupName] = {}
                 self:refreshGroups()
+                self:showNotification("Group created: " .. groupName, self.config.theme.Success)
             else
-                warn("Group already exists!")
+                self:showNotification("Group already exists!", self.config.theme.Warning)
             end
+        else
+            self:showNotification("Please enter a group name", self.config.theme.Warning)
         end
         dialog:Destroy()
     end)
+    
+    -- Cancel handler
+    cancelButton.MouseButton1Click:Connect(function()
+        dialog:Destroy()
+    end)
+    
+    -- Close dialog when clicking outside
+    local function onInputBegan(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            local mousePos = input.Position
+            local dialogPos = dialog.AbsolutePosition
+            local dialogSize = dialog.AbsoluteSize
+            
+            if not (mousePos.X >= dialogPos.X and mousePos.X <= dialogPos.X + dialogSize.X and
+                   mousePos.Y >= dialogPos.Y and mousePos.Y <= dialogPos.Y + dialogSize.Y) then
+                dialog:Destroy()
+            end
+        end
+    end
+    
+    self.screenGui.InputBegan:Connect(onInputBegan)
+    
+    dialog.Destroying:Connect(function()
+        self.screenGui.InputBegan:Disconnect(onInputBegan)
+    end)
 end
 
+-- Improved add item dialog
 function GroupFieldUILibrary:showAddItemDialog(groupName)
-    local dialog = Instance.new("Frame")
-    dialog.Name = "AddItemDialog"
-    dialog.Size = UDim2.new(0.8, 0, 0.6, 0)
-    dialog.Position = UDim2.new(0.1, 0, 0.2, 0)
-    dialog.BackgroundColor3 = self.theme.Background
-    dialog.BorderSizePixel = 0
+    if self.mainFrame:FindFirstChild("AddItemDialog") then
+        return
+    end
     
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 8)
-    corner.Parent = dialog
+    local dialog = self:createFrame("AddItemDialog", {
+        Size = UDim2.new(0.8, 0, 0.6, 0),
+        Position = UDim2.new(0.1, 0, 0.2, 0),
+        BackgroundColor3 = self.config.theme.Background,
+        ZIndex = 10
+    })
     
-    local stroke = Instance.new("UIStroke")
-    stroke.Thickness = 2
-    stroke.Color = Color3.fromRGB(80, 80, 80)
-    stroke.Parent = dialog
+    self:addUICorner(dialog, 8)
+    self:addUIStroke(dialog, 2, Color3.fromRGB(80, 80, 80))
     
-    local title = Instance.new("TextLabel")
-    title.Size = UDim2.new(0.9, 0, 0.1, 0)
-    title.Position = UDim2.new(0.05, 0, 0.05, 0)
-    title.BackgroundTransparency = 1
-    title.Text = "Add Item to " .. groupName
-    title.TextColor3 = self.theme.Text
-    title.Font = Enum.Font.GothamBold
+    local title = self:createLabel("DialogTitle", {
+        Size = UDim2.new(0.9, 0, 0.1, 0),
+        Position = UDim2.new(0.05, 0, 0.05, 0),
+        Text = "Add Item to " .. groupName,
+        TextColor3 = self.config.theme.Text,
+        Font = Enum.Font.GothamBold,
+        ZIndex = 11
+    })
     
-    local itemLabel = Instance.new("TextLabel")
-    itemLabel.Size = UDim2.new(0.4, 0, 0.1, 0)
-    itemLabel.Position = UDim2.new(0.05, 0, 0.2, 0)
-    itemLabel.BackgroundTransparency = 1
-    itemLabel.Text = "Item:"
-    itemLabel.TextColor3 = self.theme.Text
-    itemLabel.Font = Enum.Font.Gotham
-    itemLabel.TextXAlignment = Enum.TextXAlignment.Left
+    local itemLabel = self:createLabel("ItemLabel", {
+        Size = UDim2.new(0.4, 0, 0.1, 0),
+        Position = UDim2.new(0.05, 0, 0.2, 0),
+        Text = "Item:",
+        TextColor3 = self.config.theme.Text,
+        Font = Enum.Font.Gotham,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        ZIndex = 11
+    })
     
-    local itemBox = Instance.new("TextBox")
-    itemBox.Size = UDim2.new(0.9, 0, 0.1, 0)
-    itemBox.Position = UDim2.new(0.05, 0, 0.3, 0)
-    itemBox.BackgroundColor3 = self.theme.Button
-    itemBox.TextColor3 = self.theme.Text
-    itemBox.PlaceholderText = "Enter item name or select from workspace"
-    itemBox.ClearTextOnFocus = false
+    local itemBox = self:createTextBox("ItemBox", {
+        Size = UDim2.new(0.9, 0, 0.1, 0),
+        Position = UDim2.new(0.05, 0, 0.3, 0),
+        PlaceholderText = "Enter item name or select from workspace",
+        ClearTextOnFocus = false,
+        ZIndex = 11
+    })
     
-    local propsLabel = Instance.new("TextLabel")
-    propsLabel.Size = UDim2.new(0.4, 0, 0.1, 0)
-    propsLabel.Position = UDim2.new(0.05, 0, 0.45, 0)
-    propsLabel.BackgroundTransparency = 1
-    propsLabel.Text = "Properties (JSON):"
-    propsLabel.TextColor3 = self.theme.Text
-    propsLabel.Font = Enum.Font.Gotham
-    propsLabel.TextXAlignment = Enum.TextXAlignment.Left
+    local propsLabel = self:createLabel("PropsLabel", {
+        Size = UDim2.new(0.4, 0, 0.1, 0),
+        Position = UDim2.new(0.05, 0, 0.45, 0),
+        Text = "Properties (JSON):",
+        TextColor3 = self.config.theme.Text,
+        Font = Enum.Font.Gotham,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        ZIndex = 11
+    })
     
-    local propsBox = Instance.new("TextBox")
-    propsBox.Size = UDim2.new(0.9, 0, 0.3, 0)
-    propsBox.Position = UDim2.new(0.05, 0, 0.55, 0)
-    propsBox.BackgroundColor3 = self.theme.Button
-    propsBox.TextColor3 = self.theme.Text
-    propsBox.PlaceholderText = '{"key":"value", "number":123}'
-    propsBox.ClearTextOnFocus = false
-    propsBox.MultiLine = true
-    propsBox.TextWrapped = true
+    local propsBox = self:createTextBox("PropsBox", {
+        Size = UDim2.new(0.9, 0, 0.3, 0),
+        Position = UDim2.new(0.05, 0, 0.55, 0),
+        PlaceholderText = '{"key":"value", "number":123}',
+        ClearTextOnFocus = false,
+        MultiLine = true,
+        TextWrapped = true,
+        ZIndex = 11
+    })
     
-    local submitButton = Instance.new("TextButton")
-    submitButton.Size = UDim2.new(0.4, 0, 0.1, 0)
-    submitButton.Position = UDim2.new(0.3, 0, 0.85, 0)
-    submitButton.BackgroundColor3 = self.theme.Success
-    submitButton.Text = "Add"
-    submitButton.TextColor3 = self.theme.Text
-    submitButton.Font = Enum.Font.Gotham
+    local buttonFrame = self:createFrame("ButtonFrame", {
+        Size = UDim2.new(0.9, 0, 0.1, 0),
+        Position = UDim2.new(0.05, 0, 0.9, 0),
+        BackgroundTransparency = 1,
+        ZIndex = 11
+    })
+    
+    local submitButton = self:createButton("SubmitButton", {
+        Size = UDim2.new(0.45, 0, 1, 0),
+        Position = UDim2.new(0, 0, 0, 0),
+        BackgroundColor3 = self.config.theme.Success,
+        Text = "Add",
+        TextColor3 = self.config.theme.Text,
+        Font = Enum.Font.Gotham,
+        ZIndex = 12
+    })
+    
+    local cancelButton = self:createButton("CancelButton", {
+        Size = UDim2.new(0.45, 0, 1, 0),
+        Position = UDim2.new(0.55, 0, 0, 0),
+        BackgroundColor3 = self.config.theme.Error,
+        Text = "Cancel",
+        TextColor3 = self.config.theme.Text,
+        Font = Enum.Font.Gotham,
+        ZIndex = 12
+    })
     
     title.Parent = dialog
     itemLabel.Parent = dialog
     itemBox.Parent = dialog
     propsLabel.Parent = dialog
     propsBox.Parent = dialog
-    submitButton.Parent = dialog
+    buttonFrame.Parent = dialog
+    submitButton.Parent = buttonFrame
+    cancelButton.Parent = buttonFrame
     dialog.Parent = self.mainFrame
     
+    -- Focus item box automatically
+    itemBox:CaptureFocus()
+    
+    -- Submit handler
     submitButton.MouseButton1Click:Connect(function()
-        local item = itemBox.Text
+        local item = string.gsub(itemBox.Text, "^%s*(.-)%s*$", "%1") -- Trim whitespace
         if item and item ~= "" then
             local properties = {}
             if propsBox.Text ~= "" then
                 local success, result = pcall(function()
-                    return game:GetService("HttpService"):JSONDecode(propsBox.Text)
+                    return HttpService:JSONDecode(propsBox.Text)
                 end)
                 if success then
                     properties = result
                 else
-                    warn("Invalid JSON properties: " .. result)
+                    self:showNotification("Invalid JSON: " .. result, self.config.theme.Warning)
+                    return
                 end
             end
             
-            self.groupData[groupName][item] = properties
-            self:refreshMembersList(groupName)
+            if self.groupData[groupName][item] then
+                self:showNotification("Item already exists in group!", self.config.theme.Warning)
+            else
+                self.groupData[groupName][item] = properties
+                self:refreshMembersList(groupName)
+                self:refreshGroups() -- Update count badges
+                self:showNotification("Item added to group", self.config.theme.Success)
+                dialog:Destroy()
+            end
+        else
+            self:showNotification("Please enter an item name", self.config.theme.Warning)
         end
+    end)
+    
+    -- Cancel handler
+    cancelButton.MouseButton1Click:Connect(function()
         dialog:Destroy()
     end)
 end
 
+-- Improved remove item dialog
 function GroupFieldUILibrary:showRemoveItemDialog(groupName)
     if not self.groupData[groupName] or not next(self.groupData[groupName]) then
+        self:showNotification("Group is empty", self.config.theme.Warning)
         return
     end
     
-    local dialog = Instance.new("Frame")
-    dialog.Name = "RemoveItemDialog"
-    dialog.Size = UDim2.new(0.8, 0, 0.6, 0)
-    dialog.Position = UDim2.new(0.1, 0, 0.2, 0)
-    dialog.BackgroundColor3 = self.theme.Background
-    dialog.BorderSizePixel = 0
+    if self.mainFrame:FindFirstChild("RemoveItemDialog") then
+        return
+    end
     
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 8)
-    corner.Parent = dialog
+    local dialog = self:createFrame("RemoveItemDialog", {
+        Size = UDim2.new(0.8, 0, 0.6, 0),
+        Position = UDim2.new(0.1, 0, 0.2, 0),
+        BackgroundColor3 = self.config.theme.Background,
+        ZIndex = 10
+    })
     
-    local stroke = Instance.new("UIStroke")
-    stroke.Thickness = 2
-    stroke.Color = Color3.fromRGB(80, 80, 80)
-    stroke.Parent = dialog
+    self:addUICorner(dialog, 8)
+    self:addUIStroke(dialog, 2, Color3.fromRGB(80, 80, 80))
     
-    local title = Instance.new("TextLabel")
-    title.Size = UDim2.new(0.9, 0, 0.1, 0)
-    title.Position = UDim2.new(0.05, 0, 0.05, 0)
-    title.BackgroundTransparency = 1
-    title.Text = "Remove Item from " .. groupName
-    title.TextColor3 = self.theme.Text
-    title.Font = Enum.Font.GothamBold
+    local title = self:createLabel("DialogTitle", {
+        Size = UDim2.new(0.9, 0, 0.1, 0),
+        Position = UDim2.new(0.05, 0, 0.05, 0),
+        Text = "Remove Items from " .. groupName,
+        TextColor3 = self.config.theme.Text,
+        Font = Enum.Font.GothamBold,
+        ZIndex = 11
+    })
     
-    local scrollFrame = Instance.new("ScrollingFrame")
-    scrollFrame.Size = UDim2.new(0.9, 0, 0.7, 0)
-    scrollFrame.Position = UDim2.new(0.05, 0, 0.2, 0)
-    scrollFrame.BackgroundTransparency = 1
-    scrollFrame.ScrollBarThickness = 4
+    local scrollFrame = self:createScrollingFrame("ItemsList", {
+        Size = UDim2.new(0.9, 0, 0.7, 0),
+        Position = UDim2.new(0.05, 0, 0.2, 0),
+        ScrollBarThickness = 6,
+        ZIndex = 11
+    })
     
-    local layout = Instance.new("UIListLayout")
-    layout.Padding = UDim.new(0, 5)
-    layout.Parent = scrollFrame
+    local buttonFrame = self:createFrame("ButtonFrame", {
+        Size = UDim2.new(0.9, 0, 0.1, 0),
+        Position = UDim2.new(0.05, 0, 0.9, 0),
+        BackgroundTransparency = 1,
+        ZIndex = 11
+    })
+    
+    local removeButton = self:createButton("RemoveButton", {
+        Size = UDim2.new(0.45, 0, 1, 0),
+        Position = UDim2.new(0, 0, 0, 0),
+        BackgroundColor3 = self.config.theme.Error,
+        Text = "Remove Selected",
+        TextColor3 = self.config.theme.Text,
+        Font = Enum.Font.Gotham,
+        ZIndex = 12
+    })
+    
+    local cancelButton = self:createButton("CancelButton", {
+        Size = UDim2.new(0.45, 0, 1, 0),
+        Position = UDim2.new(0.55, 0, 0, 0),
+        BackgroundColor3 = self.config.theme.Button,
+        Text = "Cancel",
+        TextColor3 = self.config.theme.Text,
+        Font = Enum.Font.Gotham,
+        ZIndex = 12
+    })
     
     -- Populate with items
-    for item, _ in pairs(self.groupData[groupName]) do
-        local itemFrame = Instance.new("Frame")
-        itemFrame.Size = UDim2.new(0.9, 0, 0, 40)
-        itemFrame.BackgroundColor3 = self.theme.Button
-        itemFrame.BorderSizePixel = 0
+    local selectedItems = {}
+    for item, properties in pairs(self.groupData[groupName]) do
+        local itemFrame = self:createFrame(item, {
+            Size = UDim2.new(0.9, 0, 0, 40),
+            BackgroundColor3 = self.config.theme.Button,
+            ZIndex = 12
+        })
+        self:addUICorner(itemFrame, 4)
         
-        local corner = Instance.new("UICorner")
-        corner.CornerRadius = UDim.new(0, 4)
-        corner.Parent = itemFrame
+        local nameLabel = self:createLabel("NameLabel", {
+            Size = UDim2.new(0.6, 0, 1, 0),
+            Text = tostring(item),
+            TextColor3 = self.config.theme.Text,
+            Font = Enum.Font.Gotham,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            ZIndex = 13
+        })
         
-        local nameLabel = Instance.new("TextLabel")
-        nameLabel.Size = UDim2.new(0.7, 0, 1, 0)
-        nameLabel.BackgroundTransparency = 1
-        nameLabel.Text = tostring(item)
-        nameLabel.TextColor3 = self.theme.Text
-        nameLabel.Font = Enum.Font.Gotham
-        nameLabel.TextXAlignment = Enum.TextXAlignment.Left
-        
-        local removeButton = Instance.new("TextButton")
-        removeButton.Size = UDim2.new(0.2, 0, 0.8, 0)
-        removeButton.Position = UDim2.new(0.75, 0, 0.1, 0)
-        removeButton.BackgroundColor3 = self.theme.Error
-        removeButton.Text = "Remove"
-        removeButton.TextColor3 = self.theme.Text
-        removeButton.Font = Enum.Font.Gotham
+        local selectButton = self:createButton("SelectButton", {
+            Size = UDim2.new(0.3, 0, 0.8, 0),
+            Position = UDim2.new(0.65, 0, 0.1, 0),
+            BackgroundColor3 = self.config.theme.Error,
+            Text = "Select",
+            TextColor3 = self.config.theme.Text,
+            Font = Enum.Font.Gotham,
+            TextSize = 12,
+            ZIndex = 13
+        })
         
         nameLabel.Parent = itemFrame
-        removeButton.Parent = itemFrame
+        selectButton.Parent = itemFrame
         itemFrame.Parent = scrollFrame
         
-        removeButton.MouseButton1Click:Connect(function()
-            self.groupData[groupName][item] = nil
-            self:refreshMembersList(groupName)
-            itemFrame:Destroy()
-            
-            -- Close dialog if no more items
-            if not next(self.groupData[groupName]) then
-                dialog:Destroy()
+        selectButton.MouseButton1Click:Connect(function()
+            selectedItems[item] = not selectedItems[item]
+            if selectedItems[item] then
+                itemFrame.BackgroundColor3 = Color3.fromRGB(
+                    math.floor(self.config.theme.Button.R * 255 * 0.7),
+                    math.floor(self.config.theme.Button.G * 255 * 0.7),
+                    math.floor(self.config.theme.Button.B * 255 * 0.7)
+                )
+                selectButton.Text = "Selected"
+            else
+                itemFrame.BackgroundColor3 = self.config.theme.Button
+                selectButton.Text = "Select"
             end
         end)
     end
     
     title.Parent = dialog
     scrollFrame.Parent = dialog
+    buttonFrame.Parent = dialog
+    removeButton.Parent = buttonFrame
+    cancelButton.Parent = buttonFrame
     dialog.Parent = self.mainFrame
+    
+    -- Remove handler
+    removeButton.MouseButton1Click:Connect(function()
+        local removedCount = 0
+        for item, _ in pairs(selectedItems) do
+            if self.groupData[groupName][item] then
+                self.groupData[groupName][item] = nil
+                removedCount = removedCount + 1
+            end
+        end
+        
+        if removedCount > 0 then
+            self:refreshMembersList(groupName)
+            self:refreshGroups() -- Update count badges
+            self:showNotification(string.format("Removed %d items", removedCount), self.config.theme.Success)
+        else
+            self:showNotification("No items selected", self.config.theme.Warning)
+        end
+        
+        dialog:Destroy()
+    end)
+    
+    -- Cancel handler
+    cancelButton.MouseButton1Click:Connect(function()
+        dialog:Destroy()
+    end)
 end
 
-function GroupFieldUILibrary:toggle()
-    self.isVisible = not self.isVisible
-    self.mainFrame.Visible = self.isVisible
-    self.toggleButton.Text = self.isVisible and "Hide GUI" or "Show GUI"
+-- Improved multi-select removal confirmation
+function GroupFieldUILibrary:showMultiRemoveConfirmation()
+    local count = 0
+    for _ in pairs(self.state.selectedItems) do
+        count = count + 1
+    end
     
-    if self.isVisible then
+    if count == 0 then
+        self:showNotification("No items selected", self.config.theme.Warning)
+        return
+    end
+    
+    local dialog = self:createFrame("ConfirmRemoveDialog", {
+        Size = UDim2.new(0.6, 0, 0.25, 0),
+        Position = UDim2.new(0.2, 0, 0.375, 0),
+        BackgroundColor3 = self.config.theme.Background,
+        ZIndex = 10
+    })
+    
+    self:addUICorner(dialog, 8)
+    self:addUIStroke(dialog, 2, Color3.fromRGB(80, 80, 80))
+    
+    local title = self:createLabel("DialogTitle", {
+        Size = UDim2.new(0.9, 0, 0.4, 0),
+        Position = UDim2.new(0.05, 0, 0.1, 0),
+        Text = string.format("Remove %d selected items?", count),
+        TextColor3 = self.config.theme.Text,
+        Font = Enum.Font.GothamBold,
+        TextWrapped = true,
+        ZIndex = 11
+    })
+    
+    local buttonFrame = self:createFrame("ButtonFrame", {
+        Size = UDim2.new(0.9, 0, 0.3, 0),
+        Position = UDim2.new(0.05, 0, 0.6, 0),
+        BackgroundTransparency = 1,
+        ZIndex = 11
+    })
+    
+    local confirmButton = self:createButton("ConfirmButton", {
+        Size = UDim2.new(0.45, 0, 1, 0),
+        Position = UDim2.new(0, 0, 0, 0),
+        BackgroundColor3 = self.config.theme.Error,
+        Text = "Confirm",
+        TextColor3 = self.config.theme.Text,
+        Font = Enum.Font.Gotham,
+        ZIndex = 12
+    })
+    
+    local cancelButton = self:createButton("CancelButton", {
+        Size = UDim2.new(0.45, 0, 1, 0),
+        Position = UDim2.new(0.55, 0, 0, 0),
+        BackgroundColor3 = self.config.theme.Button,
+        Text = "Cancel",
+        TextColor3 = self.config.theme.Text,
+        Font = Enum.Font.Gotham,
+        ZIndex = 12
+    })
+    
+    title.Parent = dialog
+    buttonFrame.Parent = dialog
+    confirmButton.Parent = buttonFrame
+    cancelButton.Parent = buttonFrame
+    dialog.Parent = self.mainFrame
+    
+    -- Confirm handler
+    confirmButton.MouseButton1Click:Connect(function()
+        local removedCount = 0
+        for item, _ in pairs(self.state.selectedItems) do
+            if self.groupData[self.state.currentGroup][item] then
+                self.groupData[self.state.currentGroup][item] = nil
+                removedCount = removedCount + 1
+            end
+        end
+        
+        self.state.selectedItems = {}
+        self:refreshMembersList(self.state.currentGroup)
+        self:refreshGroups() -- Update count badges
+        self:showNotification(string.format("Removed %d items", removedCount), self.config.theme.Success)
+        dialog:Destroy()
+    end)
+    
+    -- Cancel handler
+    cancelButton.MouseButton1Click:Connect(function()
+        dialog:Destroy()
+    end)
+end
+
+-- Improved property editing dialog
+function GroupFieldUILibrary:showEditPropertiesDialog(groupName, item, properties)
+    if self.mainFrame:FindFirstChild("EditPropertiesDialog") then
+        return
+    end
+    
+    local dialog = self:createFrame("EditPropertiesDialog", {
+        Size = UDim2.new(0.8, 0, 0.6, 0),
+        Position = UDim2.new(0.1, 0, 0.2, 0),
+        BackgroundColor3 = self.config.theme.Background,
+        ZIndex = 10
+    })
+    
+    self:addUICorner(dialog, 8)
+    self:addUIStroke(dialog, 2, Color3.fromRGB(80, 80, 80))
+    
+    local title = self:createLabel("DialogTitle", {
+        Size = UDim2.new(0.9, 0, 0.1, 0),
+        Position = UDim2.new(0.05, 0, 0.05, 0),
+        Text = "Edit Properties: " .. tostring(item),
+        TextColor3 = self.config.theme.Text,
+        Font = Enum.Font.GothamBold,
+        ZIndex = 11
+    })
+    
+    local propsBox = self:createTextBox("PropsBox", {
+        Size = UDim2.new(0.9, 0, 0.7, 0),
+        Position = UDim2.new(0.05, 0, 0.2, 0),
+        Text = HttpService:JSONEncode(properties),
+        ClearTextOnFocus = false,
+        MultiLine = true,
+        TextWrapped = true,
+        ZIndex = 11
+    })
+    
+    local buttonFrame = self:createFrame("ButtonFrame", {
+        Size = UDim2.new(0.9, 0, 0.1, 0),
+        Position = UDim2.new(0.05, 0, 0.9, 0),
+        BackgroundTransparency = 1,
+        ZIndex = 11
+    })
+    
+    local saveButton = self:createButton("SaveButton", {
+        Size = UDim2.new(0.45, 0, 1, 0),
+        Position = UDim2.new(0, 0, 0, 0),
+        BackgroundColor3 = self.config.theme.Success,
+        Text = "Save",
+        TextColor3 = self.config.theme.Text,
+        Font = Enum.Font.Gotham,
+        ZIndex = 12
+    })
+    
+    local cancelButton = self:createButton("CancelButton", {
+        Size = UDim2.new(0.45, 0, 1, 0),
+        Position = UDim2.new(0.55, 0, 0, 0),
+        BackgroundColor3 = self.config.theme.Error,
+        Text = "Cancel",
+        TextColor3 = self.config.theme.Text,
+        Font = Enum.Font.Gotham,
+        ZIndex = 12
+    })
+    
+    title.Parent = dialog
+    propsBox.Parent = dialog
+    buttonFrame.Parent = dialog
+    saveButton.Parent = buttonFrame
+    cancelButton.Parent = buttonFrame
+    dialog.Parent = self.mainFrame
+    
+    -- Focus props box automatically
+    propsBox:CaptureFocus()
+    
+    -- Save handler
+    saveButton.MouseButton1Click:Connect(function()
+        local success, result = pcall(function()
+            return HttpService:JSONDecode(propsBox.Text)
+        end)
+        
+        if success then
+            self.groupData[groupName][item] = result
+            self:refreshMembersList(groupName)
+            self:showNotification("Properties updated", self.config.theme.Success)
+            dialog:Destroy()
+        else
+            self:showNotification("Invalid JSON: " .. result, self.config.theme.Warning)
+        end
+    end)
+    
+    -- Cancel handler
+    cancelButton.MouseButton1Click:Connect(function()
+        dialog:Destroy()
+    end)
+end
+
+-- Improved auto-refresh functionality
+function GroupFieldUILibrary:startAutoRefresh()
+    if self.refreshConnection then
+        self.refreshConnection:Disconnect()
+    end
+    
+    self.refreshConnection = game:GetService("RunService").Heartbeat:Connect(function()
+        if self.state.isVisible and tick() - (self.lastRefresh or 0) >= self.config.autoRefreshInterval then
+            self:refreshGroups()
+            if self.state.currentGroup then
+                self:refreshMembersList(self.state.currentGroup)
+            end
+            self.lastRefresh = tick()
+        end
+    end)
+end
+
+-- Improved group member counting
+function GroupFieldUILibrary:countGroupMembers(groupName)
+    if not self.groupData[groupName] then
+        return 0
+    end
+    
+    local count = 0
+    for _ in pairs(self.groupData[groupName]) do
+        count = count + 1
+    end
+    
+    return count
+end
+
+-- Public API methods
+function GroupFieldUILibrary:toggle()
+    self.state.isVisible = not self.state.isVisible
+    self.mainFrame.Visible = self.state.isVisible
+    self.toggleButton.Text = self.state.isVisible and "Hide GUI" or "Show GUI"
+    
+    if self.state.isVisible then
         self:refreshGroups()
     end
 end
 
 function GroupFieldUILibrary:open()
-    if not self.isVisible then
+    if not self.state.isVisible then
         self:toggle()
     end
 end
 
 function GroupFieldUILibrary:close()
-    if self.isVisible then
+    if self.state.isVisible then
         self:toggle()
     end
 end
 
 function GroupFieldUILibrary:destroy()
+    if self.refreshConnection then
+        self.refreshConnection:Disconnect()
+    end
+    
     self.screenGui:Destroy()
+    setmetatable(self, nil)
+end
+
+function GroupFieldUILibrary:updateGroupData(newData)
+    if type(newData) == "table" then
+        self.groupData = newData
+        self:refreshGroups()
+        if self.state.currentGroup then
+            self:refreshMembersList(self.state.currentGroup)
+        end
+    else
+        warn("GroupFieldUILibrary: Invalid group data provided")
+    end
+end
+
+function GroupFieldUILibrary:setTheme(newTheme)
+    for key, defaultColor in pairs(DEFAULT_THEME) do
+        self.config.theme[key] = newTheme[key] or defaultColor
+    end
+    
+    -- TODO: Implement theme refresh to update all UI elements
+    self:refreshUITheme()
+end
+
+function GroupFieldUILibrary:refreshUITheme()
+    -- Update all UI elements with the current theme
+    -- This would iterate through all elements and update their colors
+    -- Implementation omitted for brevity
 end
 
 return GroupFieldUILibrary
