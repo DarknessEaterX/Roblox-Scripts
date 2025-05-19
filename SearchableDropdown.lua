@@ -12,25 +12,45 @@ local DEFAULT_COLORS = {
     ItemHover = Color3.fromRGB(65, 65, 70),
     Highlight = Color3.fromRGB(100, 150, 255),
     Text = Color3.new(1, 1, 1),
-    Placeholder = Color3.fromRGB(180, 180, 180)
+    Placeholder = Color3.fromRGB(180, 180, 180),
+    Selected = Color3.fromRGB(80, 120, 200)
 }
 
-function SearchableDropdown.new(config)
+function SearchableDropdown.AddSearchableDropdown(config)
     local self = setmetatable({}, SearchableDropdown)
     
-    -- Configuration with defaults
-    self.items = config.items or {}
-    self.position = config.position or UDim2.new(0.5, -150, 0.2, 0)
-    self.size = config.size or UDim2.new(0, 300, 0, 40)
-    self.listSize = config.listSize or UDim2.new(0, 300, 0, 150)
-    self.colors = config.colors or DEFAULT_COLORS
-    self.placeholder = config.placeholder or "Search items..."
-    self.parent = config.parent or game.Players.LocalPlayer:WaitForChild("PlayerGui")
-    self.animationSpeed = config.animationSpeed or 0.2
+    -- Validate and set configuration
+    self.name = config.Name or "Searchable Dropdown"
+    self.options = config.Options or {}
+    self.currentOption = config.CurrentOption or (config.MultipleOptions and {} or nil)
+    self.multipleOptions = config.MultipleOptions or false
+    self.callback = config.Callback or function() end
+    self.parent = config.Parent or game.Players.LocalPlayer:WaitForChild("PlayerGui")
+    
+    -- UI configuration
+    self.position = config.Position or UDim2.new(0.5, -150, 0.2, 0)
+    self.size = config.Size or UDim2.new(0, 300, 0, 40)
+    self.listSize = config.ListSize or UDim2.new(0, 300, 0, 150)
+    self.colors = config.Colors or DEFAULT_COLORS
+    self.placeholder = config.Placeholder or "Search options..."
+    self.animationSpeed = config.AnimationSpeed or 0.2
     
     -- State
     self.isListOpen = false
-    self.selectedItem = nil
+    self.selectedItems = {}
+    
+    -- Initialize selected items for multiple selection
+    if self.multipleOptions and type(self.currentOption) == "table" then
+        for _, option in pairs(self.currentOption) do
+            if table.find(self.options, option) then
+                table.insert(self.selectedItems, option)
+            end
+        end
+    elseif not self.multipleOptions and self.currentOption then
+        if table.find(self.options, self.currentOption) then
+            table.insert(self.selectedItems, self.currentOption)
+        end
+    end
     
     -- Create UI
     self:CreateUI()
@@ -41,7 +61,7 @@ end
 function SearchableDropdown:CreateUI()
     -- ScreenGui container
     self.screenGui = Instance.new("ScreenGui")
-    self.screenGui.Name = "SearchableDropdownUI"
+    self.screenGui.Name = self.name .. "UI"
     self.screenGui.ResetOnSpawn = false
     self.screenGui.Parent = self.parent
     
@@ -75,20 +95,27 @@ function SearchableDropdown:CreateUI()
     self.searchBox.TextEditable = true
     self.searchBox.Parent = self.dropdownFrame
     
-    -- Search icon
-    local searchIcon = Instance.new("ImageLabel")
-    searchIcon.Size = UDim2.new(0, 20, 0, 20)
-    searchIcon.Position = UDim2.new(1, -30, 0.5, -10)
-    searchIcon.BackgroundTransparency = 1
-    searchIcon.Image = "rbxassetid://3926305904"
-    searchIcon.ImageRectOffset = Vector2.new(964, 324)
-    searchIcon.ImageRectSize = Vector2.new(36, 36)
-    searchIcon.ImageColor3 = Color3.fromRGB(200, 200, 200)
-    searchIcon.Parent = self.dropdownFrame
+    -- Display current selection
+    if not self.multipleOptions and #self.selectedItems > 0 then
+        self.searchBox.Text = self.selectedItems[1]
+    elseif self.multipleOptions and #self.selectedItems > 0 then
+        self.searchBox.Text = #self.selectedItems .. " selected"
+    end
+    
+    -- Dropdown icon
+    self.dropdownIcon = Instance.new("ImageLabel")
+    self.dropdownIcon.Size = UDim2.new(0, 20, 0, 20)
+    self.dropdownIcon.Position = UDim2.new(1, -30, 0.5, -10)
+    self.dropdownIcon.BackgroundTransparency = 1
+    self.dropdownIcon.Image = "rbxassetid://3926305904"
+    self.dropdownIcon.ImageRectOffset = Vector2.new(284, 4)
+    self.dropdownIcon.ImageRectSize = Vector2.new(24, 24)
+    self.dropdownIcon.ImageColor3 = Color3.fromRGB(200, 200, 200)
+    self.dropdownIcon.Parent = self.dropdownFrame
     
     -- Dropdown list frame
     self.listFrame = Instance.new("ScrollingFrame")
-    self.listFrame.Size = UDim2.new(0, 300, 0, 0) -- Start collapsed
+    self.listFrame.Size = UDim2.new(0, self.size.X.Offset, 0, 0) -- Start collapsed
     self.listFrame.Position = UDim2.new(0, 0, 1, 5)
     self.listFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
     self.listFrame.BorderSizePixel = 0
@@ -119,6 +146,9 @@ function SearchableDropdown:CreateUI()
     
     -- Connect events
     self:SetupEvents()
+    
+    -- Initial refresh
+    self:RefreshList("")
 end
 
 function SearchableDropdown:SetupEvents()
@@ -143,7 +173,7 @@ function SearchableDropdown:SetupEvents()
     end)
     
     -- Close dropdown when clicking outside
-    UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    self.clickOutsideConn = UserInputService.InputBegan:Connect(function(input, gameProcessed)
         if gameProcessed then return end
         
         if input.UserInputType == Enum.UserInputType.MouseButton1 then
@@ -170,6 +200,15 @@ function SearchableDropdown:ToggleDropdown(show)
     if self.isListOpen == show then return end
     self.isListOpen = show
     
+    -- Rotate dropdown icon
+    local iconRotation = show and 180 or 0
+    local tweenIcon = TweenService:Create(
+        self.dropdownIcon,
+        TweenInfo.new(self.animationSpeed, Enum.EasingStyle.Quad),
+        {Rotation = iconRotation}
+    )
+    tweenIcon:Play()
+    
     if show then
         self.listFrame.Visible = true
         local tween = TweenService:Create(
@@ -182,7 +221,7 @@ function SearchableDropdown:ToggleDropdown(show)
         local tween = TweenService:Create(
             self.listFrame,
             TweenInfo.new(self.animationSpeed, Enum.EasingStyle.Quad),
-            {Size = UDim2.new(0, 300, 0, 0)}
+            {Size = UDim2.new(0, self.size.X.Offset, 0, 0)}
         )
         tween.Completed:Connect(function()
             self.listFrame.Visible = false
@@ -194,7 +233,7 @@ end
 function SearchableDropdown:RefreshList(filter)
     -- Clear existing items
     for _, child in ipairs(self.listFrame:GetChildren()) do
-        if child:IsA("TextButton") then
+        if child:IsA("TextButton") or child:IsA("TextLabel") then
             child:Destroy()
         end
     end
@@ -202,15 +241,15 @@ function SearchableDropdown:RefreshList(filter)
     local hasMatches = false
     local firstMatch = nil
 
-    for _, itemName in ipairs(self.items) do
-        if filter == "" or string.find(string.lower(itemName), string.lower(filter)) then
+    for _, option in ipairs(self.options) do
+        if filter == "" or string.find(string.lower(option), string.lower(filter)) then
             hasMatches = true
             
             local button = Instance.new("TextButton")
             button.Size = UDim2.new(1, -10, 0, 30)
             button.BackgroundColor3 = self.colors.Item
             button.TextColor3 = self.colors.Text
-            button.Text = itemName
+            button.Text = option
             button.Font = Enum.Font.Gotham
             button.TextSize = 14
             button.TextXAlignment = Enum.TextXAlignment.Left
@@ -224,43 +263,72 @@ function SearchableDropdown:RefreshList(filter)
             local btnCorner = Instance.new("UICorner", button)
             btnCorner.CornerRadius = UDim.new(0, 4)
             
+            -- Highlight if selected
+            if table.find(self.selectedItems, option) then
+                button.BackgroundColor3 = self.colors.Selected
+            end
+            
             -- Hover effect
             button.MouseEnter:Connect(function()
-                if button.BackgroundColor3 ~= self.colors.Highlight then
+                if not table.find(self.selectedItems, option) then
                     button.BackgroundColor3 = self.colors.ItemHover
                 end
             end)
             
             button.MouseLeave:Connect(function()
-                if button.BackgroundColor3 ~= self.colors.Highlight then
+                if not table.find(self.selectedItems, option) then
                     button.BackgroundColor3 = self.colors.Item
+                else
+                    button.BackgroundColor3 = self.colors.Selected
                 end
             end)
             
             -- Click handler
             button.MouseButton1Click:Connect(function()
-                self.searchBox.Text = itemName
-                self.searchBox:ReleaseFocus()
-                self.selectedItem = itemName
-                
-                -- Highlight the selected item briefly
-                button.BackgroundColor3 = self.colors.Highlight
-                task.delay(0.5, function()
-                    if button then
+                if self.multipleOptions then
+                    -- Toggle selection for multiple options
+                    local index = table.find(self.selectedItems, option)
+                    if index then
+                        table.remove(self.selectedItems, index)
                         button.BackgroundColor3 = self.colors.Item
+                    else
+                        table.insert(self.selectedItems, option)
+                        button.BackgroundColor3 = self.colors.Selected
                     end
-                end)
-                
-                -- Fire selection changed event
-                if self.onItemSelected then
-                    self.onItemSelected(itemName)
+                    
+                    -- Update display text
+                    if #self.selectedItems > 0 then
+                        self.searchBox.Text = #self.selectedItems .. " selected"
+                    else
+                        self.searchBox.Text = ""
+                    end
+                else
+                    -- Single selection
+                    self.selectedItems = {option}
+                    self.searchBox.Text = option
+                    self.searchBox:ReleaseFocus()
+                    
+                    -- Reset all buttons to default color
+                    for _, btn in ipairs(self.listFrame:GetChildren()) do
+                        if btn:IsA("TextButton") then
+                            btn.BackgroundColor3 = self.colors.Item
+                        end
+                    end
+                    
+                    -- Highlight the selected button
+                    button.BackgroundColor3 = self.colors.Selected
                 end
+                
+                -- Fire callback
+                self.callback(self.multipleOptions and self.selectedItems or option)
             end)
 
-            -- Highlight the first match (but don't auto-complete)
-            if not firstMatch and string.sub(string.lower(itemName), 1, #filter) == string.lower(filter) and filter ~= "" then
+            -- Highlight the first match
+            if not firstMatch and string.sub(string.lower(option), 1, #filter) == string.lower(filter) and filter ~= "" then
                 firstMatch = button
-                button.BackgroundColor3 = self.colors.Highlight
+                if not table.find(self.selectedItems, option) then
+                    button.BackgroundColor3 = self.colors.Highlight
+                end
             end
         end
     end
@@ -277,24 +345,40 @@ function SearchableDropdown:RefreshList(filter)
     end
 end
 
--- Public method to update items
-function SearchableDropdown:UpdateItems(newItems)
-    self.items = newItems or {}
+-- Public method to update options
+function SearchableDropdown:UpdateOptions(newOptions)
+    self.options = newOptions or {}
     self:RefreshList(self.searchBox.Text)
 end
 
--- Public method to set selection callback
-function SearchableDropdown:SetSelectionCallback(callback)
-    self.onItemSelected = callback
-end
-
--- Public method to get currently selected item
-function SearchableDropdown:GetSelectedItem()
-    return self.selectedItem
+-- Public method to set current selection
+function SearchableDropdown:SetSelection(selection)
+    if self.multipleOptions then
+        self.selectedItems = {}
+        if type(selection) == "table" then
+            for _, option in pairs(selection) do
+                if table.find(self.options, option) then
+                    table.insert(self.selectedItems, option)
+                end
+            end
+        end
+    else
+        self.selectedItems = {}
+        if selection and table.find(self.options, selection) then
+            table.insert(self.selectedItems, selection)
+            self.searchBox.Text = selection
+        else
+            self.searchBox.Text = ""
+        end
+    end
+    self:RefreshList("")
 end
 
 -- Public method to destroy the dropdown
 function SearchableDropdown:Destroy()
+    if self.clickOutsideConn then
+        self.clickOutsideConn:Disconnect()
+    end
     self.screenGui:Destroy()
 end
 
