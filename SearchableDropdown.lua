@@ -39,7 +39,16 @@ function SearchableDropdown.AddSearchableDropdown(config)
     self.isListOpen = false
     self.selectedItems = {}
     
-    -- Initialize selected items for multiple selection
+    -- Initialize selected items
+    self:InitializeSelectedItems()
+    
+    -- Create UI
+    self:CreateUI()
+    
+    return self
+end
+
+function SearchableDropdown:InitializeSelectedItems()
     if self.multipleOptions and type(self.currentOption) == "table" then
         for _, option in pairs(self.currentOption) do
             if table.find(self.options, option) then
@@ -51,11 +60,6 @@ function SearchableDropdown.AddSearchableDropdown(config)
             table.insert(self.selectedItems, self.currentOption)
         end
     end
-    
-    -- Create UI
-    self:CreateUI()
-    
-    return self
 end
 
 function SearchableDropdown:CreateUI()
@@ -95,12 +99,8 @@ function SearchableDropdown:CreateUI()
     self.searchBox.TextEditable = true
     self.searchBox.Parent = self.dropdownFrame
     
-    -- Display current selection
-    if not self.multipleOptions and #self.selectedItems > 0 then
-        self.searchBox.Text = self.selectedItems[1]
-    elseif self.multipleOptions and #self.selectedItems > 0 then
-        self.searchBox.Text = #self.selectedItems .. " selected"
-    end
+    -- Set initial text
+    self:UpdateSearchBoxText()
     
     -- Dropdown icon
     self.dropdownIcon = Instance.new("ImageLabel")
@@ -151,6 +151,16 @@ function SearchableDropdown:CreateUI()
     self:RefreshList("")
 end
 
+function SearchableDropdown:UpdateSearchBoxText()
+    if not self.multipleOptions and #self.selectedItems > 0 then
+        self.searchBox.Text = self.selectedItems[1]
+    elseif self.multipleOptions and #self.selectedItems > 0 then
+        self.searchBox.Text = #self.selectedItems .. " selected"
+    else
+        self.searchBox.Text = ""
+    end
+end
+
 function SearchableDropdown:SetupEvents()
     -- Text changed event
     self.searchBox:GetPropertyChangedSignal("Text"):Connect(function()
@@ -160,13 +170,13 @@ function SearchableDropdown:SetupEvents()
     
     -- Focus events
     self.searchBox.Focused:Connect(function()
-        self:RefreshList(self.searchBox.Text)
         self:ToggleDropdown(true)
+        self:RefreshList(self.searchBox.Text)
     end)
     
     self.searchBox.FocusLost:Connect(function()
-        task.delay(0.1, function()
-            if not self.searchBox:IsFocused() then
+        task.delay(0.2, function() -- Slightly longer delay to allow for click events
+            if not self.searchBox:IsFocused() and not self.isMouseInList() then
                 self:ToggleDropdown(false)
             end
         end)
@@ -177,23 +187,28 @@ function SearchableDropdown:SetupEvents()
         if gameProcessed then return end
         
         if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            local mousePos = UserInputService:GetMouseLocation()
-            local dropdownAbsPos = self.dropdownFrame.AbsolutePosition
-            local dropdownSize = self.dropdownFrame.AbsoluteSize
-            local listAbsPos = self.listFrame.AbsolutePosition
-            local listSize = self.listFrame.AbsoluteSize
-            
-            local isInDropdown = (mousePos.X >= dropdownAbsPos.X and mousePos.X <= dropdownAbsPos.X + dropdownSize.X and
-                                 mousePos.Y >= dropdownAbsPos.Y and mousePos.Y <= dropdownAbsPos.Y + dropdownSize.Y)
-                                 
-            local isInList = (mousePos.X >= listAbsPos.X and mousePos.X <= listAbsPos.X + listSize.X and
-                             mousePos.Y >= listAbsPos.Y and mousePos.Y <= listAbsPos.Y + listSize.Y)
-                             
-            if not isInDropdown and not isInList and self.isListOpen then
+            if not self:isMouseInDropdown() and not self:isMouseInList() and self.isListOpen then
                 self:ToggleDropdown(false)
             end
         end
     end)
+end
+
+function SearchableDropdown:isMouseInDropdown()
+    local mousePos = UserInputService:GetMouseLocation()
+    local absPos = self.dropdownFrame.AbsolutePosition
+    local absSize = self.dropdownFrame.AbsoluteSize
+    return (mousePos.X >= absPos.X and mousePos.X <= absPos.X + absSize.X and
+            mousePos.Y >= absPos.Y and mousePos.Y <= absPos.Y + absSize.Y)
+end
+
+function SearchableDropdown:isMouseInList()
+    if not self.listFrame.Visible then return false end
+    local mousePos = UserInputService:GetMouseLocation()
+    local absPos = self.listFrame.AbsolutePosition
+    local absSize = self.listFrame.AbsoluteSize
+    return (mousePos.X >= absPos.X and mousePos.X <= absPos.X + absSize.X and
+            mousePos.Y >= absPos.Y and mousePos.Y <= absPos.Y + absSize.Y)
 end
 
 function SearchableDropdown:ToggleDropdown(show)
@@ -224,7 +239,9 @@ function SearchableDropdown:ToggleDropdown(show)
             {Size = UDim2.new(0, self.size.X.Offset, 0, 0)}
         )
         tween.Completed:Connect(function()
-            self.listFrame.Visible = false
+            if not self.isListOpen then -- Only hide if still closed
+                self.listFrame.Visible = false
+            end
         end)
         tween:Play()
     end
@@ -286,7 +303,7 @@ function SearchableDropdown:RefreshList(filter)
             -- Click handler
             button.MouseButton1Click:Connect(function()
                 if self.multipleOptions then
-                    -- Toggle selection for multiple options
+                    -- Toggle selection
                     local index = table.find(self.selectedItems, option)
                     if index then
                         table.remove(self.selectedItems, index)
@@ -295,18 +312,12 @@ function SearchableDropdown:RefreshList(filter)
                         table.insert(self.selectedItems, option)
                         button.BackgroundColor3 = self.colors.Selected
                     end
-                    
-                    -- Update display text
-                    if #self.selectedItems > 0 then
-                        self.searchBox.Text = #self.selectedItems .. " selected"
-                    else
-                        self.searchBox.Text = ""
-                    end
+                    self:UpdateSearchBoxText()
                 else
                     -- Single selection
                     self.selectedItems = {option}
                     self.searchBox.Text = option
-                    self.searchBox:ReleaseFocus()
+                    self:ToggleDropdown(false)
                     
                     -- Reset all buttons to default color
                     for _, btn in ipairs(self.listFrame:GetChildren()) do
@@ -366,11 +377,9 @@ function SearchableDropdown:SetSelection(selection)
         self.selectedItems = {}
         if selection and table.find(self.options, selection) then
             table.insert(self.selectedItems, selection)
-            self.searchBox.Text = selection
-        else
-            self.searchBox.Text = ""
         end
     end
+    self:UpdateSearchBoxText()
     self:RefreshList("")
 end
 
