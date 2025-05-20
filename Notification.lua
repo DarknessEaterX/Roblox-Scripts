@@ -4,11 +4,17 @@ local NotificationModule = {}
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local player = Players.LocalPlayer
-local gui = Instance.new("ScreenGui", player:WaitForChild("PlayerGui"))
-gui.Name = "NotificationGui"
-gui.IgnoreGuiInset = true
-gui.ResetOnSpawn = false
-gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+-- Check for existing ScreenGui
+local gui = player:WaitForChild("PlayerGui"):FindFirstChild("NotificationGui")
+if not gui then
+    gui = Instance.new("ScreenGui")
+    gui.Name = "NotificationGui"
+    gui.IgnoreGuiInset = true
+    gui.ResetOnSpawn = false
+    gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    gui.Parent = player:WaitForChild("PlayerGui")
+end
 
 -- Constants
 local NotificationWidth = 350
@@ -24,9 +30,28 @@ local MessageColor = Color3.fromRGB(200, 200, 210)
 local AccentColor = Color3.fromRGB(0, 170, 255)
 local CloseButtonColor = Color3.fromRGB(70, 70, 80)
 
--- Create Notification Frame
+-- Create Notification Frame with duplication prevention
 local function CreateNotification(title, message, duration, pinned, multiline)
+    -- Check for duplicate notifications with same title and message
+    for _, existingNotif in ipairs(ActiveNotifications) do
+        local titleLabel = existingNotif:FindFirstChildOfClass("TextLabel")
+        local messageLabel = existingNotif:FindFirstChildWhichIsA("TextLabel", {Recursive = true})
+        
+        if titleLabel and messageLabel and titleLabel.Text == string.upper(title) and messageLabel.Text == message then
+            -- If duplicate found, bring it to front and reset its timer
+            if not pinned then
+                task.delay(duration or 5, function()
+                    if existingNotif and existingNotif.Parent then
+                        NotificationModule._Dismiss(existingNotif)
+                    end
+                end)
+            end
+            return existingNotif
+        end
+    end
+
     local container = Instance.new("Frame")
+    container.Name = "Notification_"..tostring(os.time())  -- Unique name
     container.BackgroundColor3 = BackgroundColor
     container.Size = UDim2.new(0, NotificationWidth, 0, multiline and NotificationHeight + 40 or NotificationHeight)
     container.AnchorPoint = Vector2.new(1, 0)
@@ -55,6 +80,7 @@ local function CreateNotification(title, message, duration, pinned, multiline)
 
     -- Top accent bar
     local accentBar = Instance.new("Frame")
+    accentBar.Name = "AccentBar"
     accentBar.Size = UDim2.new(1, 0, 0, 3)
     accentBar.Position = UDim2.new(0, 0, 0, 0)
     accentBar.BackgroundColor3 = AccentColor
@@ -76,6 +102,7 @@ local function CreateNotification(title, message, duration, pinned, multiline)
 
     -- Title label
     local titleLabel = Instance.new("TextLabel")
+    titleLabel.Name = "Title"
     titleLabel.Text = string.upper(title)
     titleLabel.TextSize = 16
     titleLabel.Font = Enum.Font.GothamBold
@@ -88,6 +115,7 @@ local function CreateNotification(title, message, duration, pinned, multiline)
 
     -- Message label
     local messageLabel = Instance.new("TextLabel")
+    messageLabel.Name = "Message"
     messageLabel.Text = message
     messageLabel.TextSize = 14
     messageLabel.Font = Enum.Font.Gotham
@@ -192,23 +220,25 @@ function NotificationModule.Notify(title, message, duration, pinned, multiline)
     end
     
     local notif = CreateNotification(title, message, duration or 5, pinned, multiline)
-    table.insert(ActiveNotifications, notif)
+    if notif then
+        table.insert(ActiveNotifications, notif)
 
-    -- Slide-in animation
-    TweenService:Create(notif, TweenInfo.new(0.3), {
-        Position = UDim2.new(1, -20, 0, 9999), -- temp position for height calculation
-        BackgroundTransparency = 0
-    }):Play()
+        -- Slide-in animation
+        TweenService:Create(notif, TweenInfo.new(0.3), {
+            Position = UDim2.new(1, -20, 0, 9999), -- temp position for height calculation
+            BackgroundTransparency = 0
+        }):Play()
 
-    NotificationModule._UpdateLayout()
+        NotificationModule._UpdateLayout()
 
-    -- Auto dismiss
-    if not pinned then
-        task.delay(duration or 5, function()
-            if notif and notif.Parent then
-                NotificationModule._Dismiss(notif)
-            end
-        end)
+        -- Auto dismiss
+        if not pinned then
+            task.delay(duration or 5, function()
+                if notif and notif.Parent then
+                    NotificationModule._Dismiss(notif)
+                end
+            end)
+        end
     end
     
     return notif
