@@ -1,19 +1,6 @@
---[[
-    WallhopScientist.lua
-    Complex Wallhop Visualizer - Designed by a Scientist/Mathematician
-    Features:
-    - Precise jump trajectory prediction using kinematic equations
-    - Wall angle and surface analytics
-    - Statistical jump success probability
-    - Modular, extensible architecture
-    - Detailed visualization with mathematical annotations
-    - Supports advanced tuning and reporting
-]]
-
 local WallhopScientist = {}
 WallhopScientist.__index = WallhopScientist
 
--- Physics constants and utility functions
 local PI = math.pi
 local function deg2rad(deg) return deg * PI / 180 end
 
@@ -26,10 +13,9 @@ local COLORS = {
 }
 
 local DEFAULT_RAY_LENGTH = 50
-local DEFAULT_RAY_COUNT = 72 -- Higher resolution
+local DEFAULT_RAY_COUNT = 72
 local TRAJECTORY_RESOLUTION = 20
 
--- Utility: Predict jump trajectory based on initial velocity and gravity
 local function predictTrajectory(origin, velocity, gravity, steps)
     local points = {}
     for i = 0, steps do
@@ -40,7 +26,6 @@ local function predictTrajectory(origin, velocity, gravity, steps)
     return points
 end
 
--- Utility: Compute wall angle (normal vs. jump direction)
 local function computeWallAngle(jumpDirection, wallNormal)
     local cosTheta = jumpDirection:Dot(wallNormal) / (jumpDirection.Magnitude * wallNormal.Magnitude)
     local theta = math.acos(math.clamp(cosTheta, -1, 1))
@@ -85,21 +70,17 @@ function WallhopScientist:AnalyzeJump(wallPos, wallNormal)
     local horizontalDist = Vector3.new(toWall.X, 0, toWall.Z).Magnitude
     local verticalDist = toWall.Y
 
-    -- Kinematic equations
     local timeToPeak = jumpPower / gravity
     local maxHeight = (jumpPower ^ 2) / (2 * gravity)
 
     local canReach = verticalDist <= maxHeight
 
-    -- Estimate required horizontal speed (scientific kinematics)
     local t_flight = (jumpPower + math.sqrt(jumpPower^2 + 2 * gravity * verticalDist)) / gravity
     local requiredHorizontalSpeed = horizontalDist / t_flight
 
-    -- Wall angle analysis
     local wallAngle = computeWallAngle((wallPos - origin).Unit, wallNormal)
 
-    -- Success probability: Gaussian model (scientist flavor)
-    local sigma = 5 -- standard deviation for jump uncertainty
+    local sigma = 5
     local mu = walkSpeed
     local probability = math.exp(-(requiredHorizontalSpeed - mu)^2 / (2 * sigma^2))
 
@@ -114,7 +95,6 @@ function WallhopScientist:AnalyzeJump(wallPos, wallNormal)
     }
 end
 
--- Visualization helper
 local function createVisual(template, size, position, color)
     local part = template:Clone()
     part.Size = size
@@ -151,10 +131,8 @@ function WallhopScientist:UpdateVisualization()
             local jumpData = self:AnalyzeJump(result.Position, result.Normal)
             if jumpData then
                 table.insert(jumpCandidates, jumpData)
-                -- Wall and angle visuals
                 table.insert(self.ActiveVisuals, createVisual(self.VisualizationPart, Vector3.new(0.2, 0.2, 0.2), result.Position, COLORS.Wall))
 
-                -- Angle annotation
                 local angleVisual = createVisual(self.VisualizationPart, Vector3.new(0.4, 0.4, 0.4), result.Position + result.Normal * 0.6, COLORS.Angle)
                 local billboard = Instance.new("BillboardGui")
                 billboard.Adornee = angleVisual
@@ -169,7 +147,6 @@ function WallhopScientist:UpdateVisualization()
                 billboard.Parent = angleVisual
                 table.insert(self.ActiveVisuals, angleVisual)
 
-                -- Trajectory visualization
                 for i = 1, #jumpData.TrajectoryPoints do
                     local trajVisual = createVisual(self.VisualizationPart, Vector3.new(0.1, 0.1, 0.1), jumpData.TrajectoryPoints[i], COLORS.Trajectory)
                     table.insert(self.ActiveVisuals, trajVisual)
@@ -178,7 +155,6 @@ function WallhopScientist:UpdateVisualization()
         end
     end
 
-    -- Find jump with highest probability
     table.sort(jumpCandidates, function(a, b)
         if a.CanReach ~= b.CanReach then
             return a.CanReach
@@ -190,7 +166,6 @@ function WallhopScientist:UpdateVisualization()
     if bestJump then
         local optimalVisual = createVisual(self.VisualizationPart, Vector3.new(1, 1, 1), bestJump.Position, COLORS.Optimal)
         table.insert(self.ActiveVisuals, optimalVisual)
-        -- Probability annotation
         local billboard = Instance.new("BillboardGui")
         billboard.Adornee = optimalVisual
         billboard.Size = UDim2.new(6, 0, 2, 0)
