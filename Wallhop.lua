@@ -1,20 +1,121 @@
-local WallhopVisualizer = {}
-WallhopVisualizer.__index = WallhopVisualizer
+--[[
+    WallhopScientist.lua
+    Complex Wallhop Visualizer - Designed by a Scientist/Mathematician
+    Features:
+    - Precise jump trajectory prediction using kinematic equations
+    - Wall angle and surface analytics
+    - Statistical jump success probability
+    - Modular, extensible architecture
+    - Detailed visualization with mathematical annotations
+    - Supports advanced tuning and reporting
+]]
 
--- Constants
+local WallhopScientist = {}
+WallhopScientist.__index = WallhopScientist
+
+-- Physics constants and utility functions
+local PI = math.pi
+local function deg2rad(deg) return deg * PI / 180 end
+
 local COLORS = {
-    Perfect = Color3.fromRGB(0, 255, 0),
+    Optimal = Color3.fromRGB(0, 255, 0),
     Wall = Color3.fromRGB(255, 0, 0),
-    Height = Color3.fromRGB(0, 0, 255)
+    Trajectory = Color3.fromRGB(255, 255, 0),
+    Angle = Color3.fromRGB(0, 255, 255),
+    Probability = Color3.fromRGB(128, 0, 128)
 }
+
 local DEFAULT_RAY_LENGTH = 50
-local DEFAULT_RAY_COUNT = 36 -- 180° at 5° increments
+local DEFAULT_RAY_COUNT = 72 -- Higher resolution
+local TRAJECTORY_RESOLUTION = 20
 
-local workspace = game:GetService("Workspace")
-local runService = game:GetService("RunService")
+-- Utility: Predict jump trajectory based on initial velocity and gravity
+local function predictTrajectory(origin, velocity, gravity, steps)
+    local points = {}
+    for i = 0, steps do
+        local t = i / steps * 2 * velocity.Y / gravity
+        local pos = origin + velocity * t + Vector3.new(0, -0.5 * gravity * t^2, 0)
+        table.insert(points, pos)
+    end
+    return points
+end
 
--- Helper to create a part for visualization
-local function createVisualPart(template, size, position, color)
+-- Utility: Compute wall angle (normal vs. jump direction)
+local function computeWallAngle(jumpDirection, wallNormal)
+    local cosTheta = jumpDirection:Dot(wallNormal) / (jumpDirection.Magnitude * wallNormal.Magnitude)
+    local theta = math.acos(math.clamp(cosTheta, -1, 1))
+    return math.deg(theta)
+end
+
+function WallhopScientist.new(localPlayer, visualizationPart)
+    local self = setmetatable({}, WallhopScientist)
+    self.LocalPlayer = localPlayer
+
+    self.VisualizationPart = visualizationPart or Instance.new("Part")
+    self.VisualizationPart.Name = "WallhopScientistVisual"
+    self.VisualizationPart.Anchored = true
+    self.VisualizationPart.CanCollide = false
+    self.VisualizationPart.Transparency = 0.7
+    self.VisualizationPart.Parent = workspace
+
+    self.RayLength = DEFAULT_RAY_LENGTH
+    self.RayCount = DEFAULT_RAY_COUNT
+    self.ActiveVisuals = {}
+
+    self.RaycastParams = RaycastParams.new()
+    self.RaycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+
+    return self
+end
+
+function WallhopScientist:AnalyzeJump(wallPos, wallNormal)
+    local character = self.LocalPlayer.Character
+    if not character then return nil end
+
+    local root = character:FindFirstChild("HumanoidRootPart")
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    if not root or not humanoid then return nil end
+
+    local origin = root.Position
+    local gravity = workspace.Gravity
+    local jumpPower = humanoid.JumpPower
+    local walkSpeed = humanoid.WalkSpeed
+
+    local toWall = wallPos - origin
+    local horizontalDist = Vector3.new(toWall.X, 0, toWall.Z).Magnitude
+    local verticalDist = toWall.Y
+
+    -- Kinematic equations
+    local timeToPeak = jumpPower / gravity
+    local maxHeight = (jumpPower ^ 2) / (2 * gravity)
+
+    local canReach = verticalDist <= maxHeight
+
+    -- Estimate required horizontal speed (scientific kinematics)
+    local t_flight = (jumpPower + math.sqrt(jumpPower^2 + 2 * gravity * verticalDist)) / gravity
+    local requiredHorizontalSpeed = horizontalDist / t_flight
+
+    -- Wall angle analysis
+    local wallAngle = computeWallAngle((wallPos - origin).Unit, wallNormal)
+
+    -- Success probability: Gaussian model (scientist flavor)
+    local sigma = 5 -- standard deviation for jump uncertainty
+    local mu = walkSpeed
+    local probability = math.exp(-(requiredHorizontalSpeed - mu)^2 / (2 * sigma^2))
+
+    return {
+        Position = wallPos,
+        Normal = wallNormal,
+        RequiredSpeed = requiredHorizontalSpeed,
+        CanReach = canReach,
+        WallAngle = wallAngle,
+        Probability = probability,
+        TrajectoryPoints = predictTrajectory(origin, Vector3.new(0, jumpPower, 0) + (wallPos - origin).Unit * walkSpeed, gravity, TRAJECTORY_RESOLUTION)
+    }
+end
+
+-- Visualization helper
+local function createVisual(template, size, position, color)
     local part = template:Clone()
     part.Size = size
     part.Position = position
@@ -26,64 +127,7 @@ local function createVisualPart(template, size, position, color)
     return part
 end
 
-function WallhopVisualizer.new(localPlayer, visualizationPart)
-    local self = setmetatable({}, WallhopVisualizer)
-    self.LocalPlayer = localPlayer
-
-    self.VisualizationPart = visualizationPart or Instance.new("Part")
-    self.VisualizationPart.Name = "WallhopBaseVisual"
-    self.VisualizationPart.Anchored = true
-    self.VisualizationPart.CanCollide = false
-    self.VisualizationPart.Transparency = 0.7
-    self.VisualizationPart.Parent = workspace
-
-    self.RayLength = DEFAULT_RAY_LENGTH
-    self.RayCount = DEFAULT_RAY_COUNT
-    self.ActiveVisuals = {}
-
-    -- Pre-create raycast params
-    self.RaycastParams = RaycastParams.new()
-    self.RaycastParams.FilterType = Enum.RaycastFilterType.Blacklist
-
-    return self
-end
-
-function WallhopVisualizer:CalculateOptimalJump(wallPosition, wallNormal)
-    local character = self.LocalPlayer.Character
-    if not character then return nil end
-
-    local root = character:FindFirstChild("HumanoidRootPart")
-    local humanoid = character:FindFirstChildOfClass("Humanoid")
-    if not root or not humanoid then return nil end
-
-    local playerPos = root.Position
-    local toWall = wallPosition - playerPos
-    local horizontalDistance = Vector3.new(toWall.X, 0, toWall.Z).Magnitude
-    local verticalDistance = toWall.Y
-
-    -- Jump physics
-    local gravity = workspace.Gravity
-    local jumpPower = humanoid.JumpPower
-    -- Correct jump height formula: maxHeight = (jumpPower^2) / (2 * gravity)
-    local maxHeight = (jumpPower ^ 2) / (2 * gravity)
-    local timeToPeak = jumpPower / gravity
-
-    local canReach = verticalDistance <= maxHeight
-
-    if canReach then
-        local requiredHorizontalSpeed = horizontalDistance / (2 * timeToPeak)
-        return {
-            Position = wallPosition,
-            Normal = wallNormal,
-            RequiredSpeed = requiredHorizontalSpeed,
-            IsPerfect = math.abs(requiredHorizontalSpeed - humanoid.WalkSpeed) < 3
-        }
-    end
-    return nil
-end
-
-function WallhopVisualizer:UpdateVisualization()
-    -- Clear previous visuals
+function WallhopScientist:UpdateVisualization()
     for _, v in ipairs(self.ActiveVisuals) do v:Destroy() end
     self.ActiveVisuals = {}
 
@@ -94,80 +138,85 @@ function WallhopVisualizer:UpdateVisualization()
 
     local origin = root.Position
     local lookVector = root.CFrame.LookVector
-
-    local bestJump = nil
-    local jumps = {}
-
     self.RaycastParams.FilterDescendantsInstances = {character}
 
+    local bestJump = nil
+    local jumpCandidates = {}
+
     for i = 0, self.RayCount - 1 do
-        local angle = math.rad(180 * (i / (self.RayCount - 1) - 0.5))
-        local rayDirection = CFrame.fromAxisAngle(Vector3.new(0, 1, 0), angle) * lookVector
-
-        local result = workspace:Raycast(origin, rayDirection * self.RayLength, self.RaycastParams)
+        local angle = deg2rad(180 * (i / (self.RayCount - 1) - 0.5))
+        local direction = CFrame.fromAxisAngle(Vector3.new(0, 1, 0), angle) * lookVector
+        local result = workspace:Raycast(origin, direction * self.RayLength, self.RaycastParams)
         if result then
-            local jumpData = self:CalculateOptimalJump(result.Position, result.Normal)
+            local jumpData = self:AnalyzeJump(result.Position, result.Normal)
             if jumpData then
-                table.insert(jumps, jumpData)
+                table.insert(jumpCandidates, jumpData)
+                -- Wall and angle visuals
+                table.insert(self.ActiveVisuals, createVisual(self.VisualizationPart, Vector3.new(0.2, 0.2, 0.2), result.Position, COLORS.Wall))
 
-                -- Wall visual (red)
-                table.insert(self.ActiveVisuals, createVisualPart(
-                    self.VisualizationPart, Vector3.new(0.2, 0.2, 0.2), result.Position, COLORS.Wall
-                ))
+                -- Angle annotation
+                local angleVisual = createVisual(self.VisualizationPart, Vector3.new(0.4, 0.4, 0.4), result.Position + result.Normal * 0.6, COLORS.Angle)
+                local billboard = Instance.new("BillboardGui")
+                billboard.Adornee = angleVisual
+                billboard.Size = UDim2.new(4, 0, 2, 0)
+                billboard.StudsOffset = Vector3.new(0, 2, 0)
+                local textLabel = Instance.new("TextLabel")
+                textLabel.Size = UDim2.new(1, 0, 1, 0)
+                textLabel.Text = string.format("Wall Angle: %.2f°", jumpData.WallAngle)
+                textLabel.BackgroundTransparency = 1
+                textLabel.TextColor3 = Color3.new(0,1,1)
+                textLabel.Parent = billboard
+                billboard.Parent = angleVisual
+                table.insert(self.ActiveVisuals, angleVisual)
 
-                -- Height visual (blue)
-                local height = math.abs(result.Position.Y - origin.Y)
-                local midY = (result.Position.Y + origin.Y) / 2
-                table.insert(self.ActiveVisuals, createVisualPart(
-                    self.VisualizationPart, Vector3.new(0.2, height, 0.2),
-                    Vector3.new(result.Position.X, midY, result.Position.Z),
-                    COLORS.Height
-                ))
+                -- Trajectory visualization
+                for i = 1, #jumpData.TrajectoryPoints do
+                    local trajVisual = createVisual(self.VisualizationPart, Vector3.new(0.1, 0.1, 0.1), jumpData.TrajectoryPoints[i], COLORS.Trajectory)
+                    table.insert(self.ActiveVisuals, trajVisual)
+                end
             end
         end
     end
 
-    -- Find best jump from all candidates
-    if #jumps > 0 then
-        table.sort(jumps, function(a, b)
-            if a.IsPerfect ~= b.IsPerfect then
-                return a.IsPerfect -- Prefer perfect
-            end
-            return a.RequiredSpeed < b.RequiredSpeed -- Then lowest speed
-        end)
-        bestJump = jumps[1]
-    end
+    -- Find jump with highest probability
+    table.sort(jumpCandidates, function(a, b)
+        if a.CanReach ~= b.CanReach then
+            return a.CanReach
+        end
+        return a.Probability > b.Probability
+    end)
+    bestJump = jumpCandidates[1]
 
     if bestJump then
-        local perfectVisual = createVisualPart(
-            self.VisualizationPart, Vector3.new(1, 1, 1), bestJump.Position, COLORS.Perfect
-        )
-        table.insert(self.ActiveVisuals, perfectVisual)
-
+        local optimalVisual = createVisual(self.VisualizationPart, Vector3.new(1, 1, 1), bestJump.Position, COLORS.Optimal)
+        table.insert(self.ActiveVisuals, optimalVisual)
+        -- Probability annotation
         local billboard = Instance.new("BillboardGui")
-        billboard.Adornee = perfectVisual
-        billboard.Size = UDim2.new(4, 0, 2, 0)
+        billboard.Adornee = optimalVisual
+        billboard.Size = UDim2.new(6, 0, 2, 0)
         billboard.StudsOffset = Vector3.new(0, 2, 0)
-
         local textLabel = Instance.new("TextLabel")
         textLabel.Size = UDim2.new(1, 0, 1, 0)
-        textLabel.Text = string.format("Optimal Jump\nX: %.1f Y: %.1f Z: %.1f",
-            bestJump.Position.X, bestJump.Position.Y, bestJump.Position.Z)
+        textLabel.Text = string.format(
+            "Scientist Jump:\nX: %.2f Y: %.2f Z: %.2f\nWall Angle: %.2f°\nRequired Speed: %.2f\nSuccess Probability: %.2f%%",
+            bestJump.Position.X, bestJump.Position.Y, bestJump.Position.Z,
+            bestJump.WallAngle, bestJump.RequiredSpeed, bestJump.Probability * 100
+        )
         textLabel.BackgroundTransparency = 1
         textLabel.TextColor3 = Color3.new(1, 1, 1)
         textLabel.Parent = billboard
-        billboard.Parent = perfectVisual
+        billboard.Parent = optimalVisual
     end
 end
 
-function WallhopVisualizer:Start()
+function WallhopScientist:Start()
     if self.HeartbeatConnection then return end
-    self.HeartbeatConnection = runService.Heartbeat:Connect(function()
+    self.HeartbeatConnection = game:GetService("RunService").Heartbeat:Connect(function()
         self:UpdateVisualization()
     end)
 end
 
-function WallhopVisualizer:Stop()
+function WallhopScientist:Stop()
     if self.HeartbeatConnection then
         self.HeartbeatConnection:Disconnect()
         self.HeartbeatConnection = nil
@@ -176,4 +225,4 @@ function WallhopVisualizer:Stop()
     self.ActiveVisuals = {}
 end
 
-return WallhopVisualizer
+return WallhopScientist
